@@ -1,0 +1,776 @@
+COURT OPERATIONS MODERNIZATION SUITE
+Overall Vision for Evidentiary Tracking and Speedy Trial Tracking
+A configurable, auditable system concept for federal district courts
+
+EVIDENTIARY TRACKING
+SPEEDY TRIAL TRACKER
+
+
+Prepared for TechSur Solutions
+Vision document, not a final legal, policy, security, or acquisition specification
+
+1. Executive Vision
+Federal courts need operational tools that reduce manual reconciliation without replacing judicial judgment or the official case-management record. This vision proposes two interoperable modules: an Evidentiary Tracking System for courtroom exhibit control and a Speedy Trial Tracker for transparent deadline monitoring. The modules can operate independently, share a common security and audit foundation, and integrate with existing court systems where authorized.
+Vision statement
+
+
+
+1.1 Outcomes
+Outcome
+ Evidentiary Tracking
+ Speedy Trial Tracking
+
+
+Operational clarity
+ One current exhibit ledger with status, location, custody, and ruling history.
+ One reviewable case timeline showing clock starts, stops, exclusions, findings, and remaining time.
+
+Risk reduction
+ Fewer discrepancies between exhibit lists, courtroom logs, jury packages, and post-trial records.
+ Earlier visibility into missing data, unresolved exclusions, and cases approaching configurable thresholds.
+
+Judicial control
+ Judges and chambers can review evidence status and rulings without relying on a black-box workflow.
+ The system explains each computed period and requires authorized review for legally significant determinations.
+
+Local flexibility
+ Court-specific numbering, custody, sealing, retention, and disposition rules can be configured.
+ District plans, local rules, event mappings, thresholds, and approval roles can be configured.
+
+Auditability
+ Every material action is time-stamped and attributable.
+ Every calculation version, override, rationale, and approval is retained.
+
+
+
+1.2 Product Boundary
+
+ The suite supports court operations. It does not decide admissibility, make judicial findings, interpret disputed law, or replace the official docket.
+
+
+ The Evidentiary Tracking module manages metadata, workflow, status, custody, reconciliation, and secure access. Storage of exhibit files is configurable because local rules and exhibit types may require different custodians.
+
+
+ The Speedy Trial module calculates and presents candidate clock periods from configured rules and case events. Authorized court users remain responsible for validation and official determinations.
+
+
+ Any artificial intelligence features are assistive. They propose classifications, detect discrepancies, or summarize records, but do not issue rulings or final legal conclusions.
+
+
+2. System Purpose and Users
+2.1 Who Uses the Systems
+User
+ Evidentiary Tracking Responsibilities
+ Speedy Trial Responsibilities
+ Access Pattern
+
+
+Judge
+ Review exhibit status, rule on offered items, authorize sealing or release where applicable, view jury package readiness.
+ Review case clock, proposed exclusions, continuance findings, conflicts, and high-risk cases.
+ Decision and oversight views.
+
+Law clerk / judicial assistant
+ Prepare judge review queues, validate exhibit references, locate rulings and objections.
+ Research event history, prepare chronology, validate candidate exclusions, draft review notes.
+ Chambers workspace, no silent finalization.
+
+Courtroom deputy
+ Create and maintain real-time exhibit log, record offer and ruling, track physical or digital custody, reconcile at session close.
+ Confirm courtroom events and orders that affect the clock; resolve data-quality exceptions.
+ Primary operational user during proceedings.
+
+Clerk / case administrator
+ Configure case, parties, numbering conventions, security, post-trial disposition, records export.
+ Initialize tracking, monitor court caseload, validate docket mappings, manage alerts and exception queues.
+ Case and portfolio operations.
+
+Attorney / authorized party
+ Submit proposed exhibits and metadata, respond to deficiencies, acknowledge return or custody.
+ View authorized deadline information and submit structured references when the court permits.
+ Restricted external portal.
+
+Jury administrator / courtroom support
+ Prepare secure admitted-evidence package for jury review when ordered.
+ Not normally a primary user.
+ Task-specific restricted access.
+
+Court administrator / AO program manager
+ Review adoption, configuration, aggregate operational metrics, and support needs.
+ Review aggregate compliance indicators and configuration consistency without changing judicial determinations.
+ Administrative analytics.
+
+System administrator / security officer
+ Manage roles, integrations, logging, retention, and incident support.
+ Manage roles, rule packages, integration monitoring, and calculation-version controls.
+ Privileged administration with separation of duties.
+
+
+
+2.2 Core Interaction Model
+Interaction
+ Why It Is Useful
+ Primary Users
+
+Interaction
+ Why It Is Useful
+ Primary Users
+
+
+Work queue
+ Surfaces items requiring action instead of making users search entire cases.
+ Deputies, clerks, chambers
+
+Case timeline
+ Combines docket events, hearings, evidence actions, clock periods, and decisions in chronological context.
+ Judges, chambers, clerks
+
+Exception queue
+ Highlights discrepancies, missing fields, unmapped events, conflicting logs, or incomplete approvals.
+ Deputies, case administrators, system support
+
+Review and approval
+ Separates proposed information from confirmed information and records who approved it.
+ Judges, chambers, clerks
+
+Configurable alerts
+ Notifies authorized users about thresholds, unresolved items, custody events, or approaching deadlines.
+ Chambers, clerks, deputies
+
+Controlled external exchange
+ Allows attorneys to provide structured information without direct control over the official record.
+ Attorneys, clerk staff
+
+Audit explorer
+ Reconstructs what changed, when, by whom, under which rule package or calculation version.
+ Judges, administrators, auditors
+
+
+
+3. Evidentiary Tracking System
+3.1 What the System Does
+The Evidentiary Tracking System maintains a secure, real-time ledger of proposed, offered, admitted, rejected, withdrawn, substituted, sealed, and returned exhibits. It connects exhibit metadata to the case, proceeding, offering party, objections, rulings, storage location, custody actions, and post-trial disposition. The system may reference or store digital objects depending on court policy and integration design.
+Capability
+ System Behavior
+ Human Control
+
+
+Pretrial exhibit intake
+ Receives structured exhibit lists and, when permitted, digital files; validates required metadata and flags duplicates or unsupported formats.
+ Clerk or deputy accepts, rejects, or requests correction.
+
+Exhibit ledger
+ Assigns or validates identifiers and maintains current status, party, description, proceeding, confidentiality, and location.
+ Court controls numbering conventions and official status.
+
+Real-time courtroom logging
+ Records offers, objections, rulings, withdrawals, substitutions, timestamps, and notes during proceedings.
+ Deputy records actions; judge controls rulings.
+
+Custody and location
+ Tracks possession, transfer, return, storage requirements, receipts, and responsible custodian.
+ Authorized user confirms each transfer.
+
+Quality control
+ Compares party lists, deputy logs, admitted lists, jury packages, and disposition records to identify discrepancies.
+ User resolves each exception with rationale.
+
+Jury review package
+ Builds a controlled package containing only items authorized for jury review, with access and session controls.
+ Court authorizes package contents and release.
+
+Post-trial closeout
+ Produces an exportable exhibit list, return/retention tasks, receipts, and an appeal-ready audit package.
+ Clerk or deputy certifies closeout.
+
+
+
+3.2 How It Is Used
+1.
+ Case setup: Clerk staff create or synchronize the matter, proceeding, parties, security designations, exhibit rules, and numbering scheme.
+
+2.
+ Pretrial preparation: Attorneys submit proposed exhibit metadata and files where allowed. The system validates completeness and places exceptions in a court review queue.
+
+3.
+ Courtroom operation: The courtroom deputy opens the session ledger. As exhibits are offered, the deputy records status and the judge's ruling. Chambers can view the same current record.
+
+4.
+ Jury review: After court authorization, the system assembles admitted electronic exhibits into a restricted package and excludes rejected, withdrawn, or sealed items not authorized for review.
+
+5.
+ Reconciliation: At recess, day-end, and trial close, the system compares the live ledger against source lists and requires resolution of discrepancies.
+
+6.
+ Disposition: The system records return, retention, transfer, or secure storage actions and creates receipts and an auditable closeout record.
+
+
+3.3 Most Useful Evidentiary Interactions
+Interaction
+ User Experience
+ Value
+
+Interaction
+ User Experience
+ Value
+
+
+Rapid offer and ruling
+ Deputy selects exhibit, marks offered, records objection and ruling, and confirms timestamp in a few actions.
+ Supports real-time use without distracting from courtroom duties.
+
+Dual-log comparison
+ System compares records maintained by two authorized users and highlights mismatches.
+ Improves quality control for high-stakes proceedings.
+
+Physical and digital
+ Ledger distinguishes file reference, physical item, demonstrative aid,
+ Supports different custody and storage
+
+handling
+ contraband, and special-storage item.
+ treatments.
+
+Secure transfer receipt
+ Transferor and recipient acknowledge custody; system records purpose, time, location, and condition note.
+ Strengthens accountability.
+
+One-click admitted list
+ User filters to admitted items and exports a court-approved list or review package.
+ Reduces manual assembly.
+
+Search and chronology
+ Authorized user searches by identifier, party, witness, status, date, description, or proceeding.
+ Speeds retrieval during trial and post-trial review.
+
+
+
+4. Speedy Trial Tracker
+4.1 What the System Does
+The Speedy Trial Tracker creates a transparent timeline of events relevant to statutory and court-plan deadlines. It ingests or receives docket events, identifies candidate trigger and exclusion periods using a versioned rule package, calculates running time, and presents the result with source events and explanations. It is a decision-support and risk-monitoring system, not a substitute for judicial findings or legal review.
+Capability
+ System Behavior
+ Human Control
+
+
+Case initialization
+ Establishes the tracking context from case and defendant events and identifies missing trigger information.
+ Authorized user confirms the applicable start context.
+
+Event ingestion
+ Receives docket events and orders from CM/ECF or structured entry and maps them to configured event categories.
+ Court validates event mappings and resolves unmapped events.
+
+Candidate exclusion engine
+ Suggests periods associated with motions, competency proceedings, continuances, interlocutory matters, or other configured categories.
+ Authorized reviewer accepts, modifies, or rejects each candidate period.
+
+Clock calculation
+ Displays elapsed includable time, excluded periods, remaining time, and calculation date.
+ Final status depends on confirmed events and findings.
+
+Continuance findings check
+ Flags continuance records that lack required structured findings or supporting order references.
+ Judge and chambers determine legal sufficiency.
+
+Alerts and escalation
+ Generates configurable alerts as remaining time crosses court-defined thresholds or unresolved events persist.
+ Court controls recipients, cadence, and thresholds.
+
+Explanation and audit
+ Shows the event, rule reference, period, status, reviewer, and reason behind each calculation component.
+ Users can review and document overrides.
+
+
+
+4.2 How It Is Used
+7.
+ Open tracking: The system creates a defendant-specific tracker when configured trigger events appear or when a clerk opens one manually.
+
+8.
+ Validate events: Clerk staff review imported events, resolve duplicates, and map any unrecognized docket entries.
+
+9.
+ Review candidate periods: Chambers or designated staff review proposed trigger dates and exclusions, linking each to the relevant event, order, or finding.
+
+10.
+ Monitor risk: Judges, chambers, and clerks use personal and court-level dashboards to identify cases nearing thresholds, data gaps, or conflicting interpretations.
+
+11.
+ Reconcile before critical events: The tracker produces a review packet before status conferences, continuance decisions, pretrial conferences, and trial settings.
+
+12.
+ Preserve history: Each recalculation retains the prior version, inputs, rule package, approvals, and override rationale.
+
+
+4.3 Most Useful Speedy Trial Interactions
+Interaction
+ User Experience
+ Value
+
+Interaction
+ User Experience
+ Value
+
+
+Explain this date
+ User opens the calculated deadline and sees each included and excluded segment with source event and review status.
+ Builds trust and supports review.
+
+What changed?
+ System compares current and prior calculation versions and highlights added events, changed periods, and overrides.
+ Makes recalculation understandable.
+
+Unresolved event queue
+ Dashboard lists unmapped docket entries, overlapping periods, missing order references, and unreviewed candidate exclusions.
+ Focuses staff on data quality.
+
+Case conference view
+ Concise chronology displays upcoming hearing, clock state, pending
+ Supports chambers preparation.
+
+motions, continuance history, and open issues.
+
+
+Threshold alerts
+ Authorized users receive escalating notices at locally configured remaining-time thresholds.
+ Creates early operational warning.
+
+Defendant-level separation
+ Multi-defendant matters maintain separate clocks and show relationships without collapsing them into one result.
+ Avoids oversimplification.
+
+
+
+5. End-to-End User Journeys
+5.1 Trial Day: Evidentiary Tracking
+Stage
+ Courtroom Deputy
+ Judge / Chambers
+ Attorney / Party
+ System Interaction
+
+
+Before session
+ Confirms exhibit inventory and unresolved intake issues.
+ Reviews pending evidentiary items if needed.
+ Corrects rejected metadata and confirms proposed list.
+ Validates list, permissions, file readiness, and discrepancies.
+
+Exhibit offered
+ Selects exhibit and records offer.
+ Views item and associated metadata.
+ Identifies exhibit and offers it under court procedure.
+ Time-stamps offer and updates shared status.
+
+Objection / ruling
+ Records objection category and ruling stated in court.
+ Makes ruling and may add limited note or instruction.
+ States objection or response.
+ Links ruling to exhibit and proceeding.
+
+Jury review
+ Confirms admitted set and court authorization.
+ Approves or adjusts package.
+ No direct control over package.
+ Creates restricted package and records access.
+
+Closeout
+ Reconciles ledger, custody, and disposition.
+ Reviews exceptions when escalated.
+ Acknowledges returned items as required.
+ Produces exhibit list, receipts, and audit package.
+
+
+
+5.2 Criminal Case Monitoring: Speedy Trial
+Stage
+ Clerk / Case Administrator
+ Judge / Chambers
+ System Interaction
+
+
+Tracker opened
+ Confirms defendant, case, trigger event, and local configuration.
+ Reviews only when an issue is presented.
+ Creates initial timeline and identifies missing data.
+
+Motion filed
+ Validates imported event and links disposition when available.
+ Reviews motion and related procedural history.
+ Creates a candidate period and marks it unconfirmed until reviewed.
+
+Continuance requested
+ Ensures request and order references are present.
+ Makes findings and enters or approves order.
+ Checks structured completeness and recalculates after confirmation.
+
+Threshold reached
+ Investigates open exceptions and prepares review packet.
+ Reviews risk, unresolved events, and schedule.
+ Sends configured alert with explanation, not merely a date.
+
+Trial or disposition
+ Confirms relevant dates and closes or transitions tracking as configured.
+ Reviews final chronology if required.
+ Locks a final version while retaining audit history.
+
+
+
+Critical interaction rule
+
+
+
+6. Information, Integrations, and Controls
+6.1 Core Information Objects
+Module
+ Key Objects
+
+
+Shared foundation
+ Court, division, case, proceeding, hearing, user, role, party, docket event, document reference, security designation, notification, task, audit event.
+
+Evidentiary Tracking
+ Exhibit, version, exhibit file reference, offer, objection, ruling, custody transfer, storage location, jury package, reconciliation exception, disposition receipt.
+
+Speedy Trial Tracker
+ Defendant tracker, trigger event, timeline segment, candidate exclusion, confirmed exclusion, continuance finding, calculation version, threshold, alert, override, review certification.
+
+
+
+6.2 Priority Integrations
+Integration
+ Purpose
+ Direction
+ Design Note
+
+
+CM/ECF or successor case-management platform
+ Case, party, docket event, order, and document-reference synchronization.
+ Primarily inbound; controlled outbound references or filings where authorized.
+ Official docket remains authoritative.
+
+Identity and access management
+ Single sign-on, multifactor authentication, role and court context.
+ Bidirectional session and entitlement checks.
+ Support least privilege and court boundaries.
+
+Document / object repository
+ Secure storage or reference to electronic exhibits and generated packages.
+ Bidirectional.
+ Separate sealed and restricted content as required.
+
+Notification services
+ Email, in-application, or other approved alerts.
+ Outbound with delivery status inbound.
+ Do not expose sensitive details in notification text.
+
+Courtroom technology
+ Secure display or jury review of authorized admitted evidence.
+ Controlled outbound package or stream.
+ No uncontrolled copying or public access.
+
+Reporting / analytics
+ Operational metrics, backlog, data quality, adoption, and support reporting.
+ Outbound de-identified or role-limited.
+ Avoid using aggregate analytics to alter judicial decisions.
+
+
+
+6.3 Security, Privacy, and Record Integrity
+
+ Role-based and attribute-based access by court, division, case, proceeding, party role, security designation, and task.
+
+
+ Strong identity, multifactor authentication, session controls, and privileged administration safeguards.
+
+
+ Encryption in transit and at rest, secure key management, malware scanning, approved file-type controls, and integrity checks.
+
+
+ Immutable or tamper-evident audit records for material actions, with audit access separated from operational editing.
+
+
+ Sealed, restricted, grand-jury, juvenile, personally identifiable, and sensitive evidence handled through explicit policy configurations.
+
+
+ Retention and disposition schedules configurable to court policy and record category.
+
+
+ Business continuity features appropriate for courtroom operation, including saved work, synchronization recovery, and documented manual fallback procedures.
+
+
+7. Conceptual Solution Architecture
+The target architecture is a modular web platform with shared services and two domain modules. Courts can deploy one module first and add the second without duplicating identity, audit, configuration, notification, or integration capabilities.
+Layer
+ Components
+ Purpose
+
+
+Experience
+ Judge and chambers workspace; clerk operations console; courtroom deputy interface; restricted attorney portal; administrative dashboard.
+ Role-specific workflows optimized for courtroom and case-monitoring use.
+
+Domain services
+ Exhibit ledger, custody, reconciliation, jury package; event mapping, timeline, calculation, findings review, alerts.
+ Implements the two operational domains.
+
+Rules and configuration
+ Court profiles, local event mappings, numbering, statuses, thresholds, workflow states, notification rules, retention.
+ Supports national core plus local variation without code forks.
+
+Shared platform services
+ Identity, authorization, case context, tasks, search, notifications, audit, file scanning, reporting, API gateway.
+ Reusable cross-module foundation.
+
+Data and integration
+ Operational database, secure object store or references, audit store, CM/ECF connector, identity connector, reporting feed.
+ Preserves operational state and synchronizes authoritative sources.
+
+Security and operations
+ Logging, monitoring, backup, recovery, vulnerability management, configuration management, release controls.
+ Supports reliable and controlled operation.
+
+
+
+7.1 Design Principles
+
+ National core, local configuration: common product behavior with court-approved local rules and workflows.
+
+
+ Human-in-command: system recommendations remain reviewable and reversible by authorized users.
+
+
+ Explain every consequential result: source events, rule version, calculation steps, status, and reviewer are visible.
+
+
+ Courtroom speed: critical interactions use minimal steps, large targets, keyboard support, and rapid recovery from interruption.
+
+
+ Authoritative-source discipline: imported data retains source identifiers; local changes do not silently overwrite the official docket.
+
+
+ Accessibility and usability: interfaces are designed for Section 508 conformance and demanding courtroom conditions.
+
+
+ API-first interoperability: integrations are isolated behind controlled services so source systems can evolve.
+
+
+8. Delivery Vision and MVP Scope
+8.1 Recommended Build Sequence
+Increment
+ Evidentiary Tracking
+ Speedy Trial Tracker
+ Shared Platform
+
+
+Foundation
+ Case setup; users and roles; exhibit metadata; basic ledger.
+ Case setup; event entry/import; timeline shell.
+ Identity, authorization, audit, configuration, search, notifications.
+
+Operational MVP
+ Pretrial intake; courtroom status updates; rulings; reconciliation; exportable exhibit list.
+ Versioned calculation; candidate exclusions; explainability; configurable alerts; review workflow.
+ CM/ECF integration adapter; exception queue; operational dashboard.
+
+Pilot hardening
+ Custody transfers; sealing; jury package; physical and digital distinctions; closeout.
+ Multi-defendant handling; continuance findings check; portfolio dashboard; calculation comparison.
+ Performance, accessibility, security testing, support tooling, recovery.
+
+Scale
+ Court-specific templates; additional repositories; analytics; broader courtroom integration.
+ Additional court plans and local mappings; cross-court administration; advanced analytics.
+ National configuration governance, release management, onboarding toolkit.
+
+
+
+8.2 MVP Acceptance Themes
+
+ A courtroom deputy can maintain an accurate exhibit ledger during a representative hearing without parallel paper re-entry for the demonstrated workflow.
+
+
+ Authorized users can reconstruct the history of any exhibit status, ruling reference, or custody action.
+
+
+ A clerk or chambers user can see how every Speedy Trial calculation segment was derived and identify unreviewed inputs.
+
+
+ Calculation changes are versioned and explainable; no prior approved result is silently replaced.
+
+
+ Court configuration can change numbering, alerts, workflow roles, and event mappings without creating a separate software branch.
+
+
+ Sensitive cases and exhibits remain inaccessible to users without appropriate authorization.
+
+
+ The system has a tested manual-continuity and recovery workflow for courtroom or integration disruption.
+
+
+8.3 Pilot Approach
+13.
+ Select a pilot district and representative users for courtroom, clerk, chambers, security, records, and IT perspectives.
+
+14.
+ Map the court's current exhibit and Speedy Trial workflows, local rules, documents, exception patterns, and integration constraints.
+
+15.
+ Prototype critical screens with users before implementing automation. Emphasize the live exhibit ledger and calculation explanation views.
+
+16.
+ Run scenario-based validation using synthetic or approved test cases, including sealed exhibits, multi-defendant matters, corrected docket events, and system outages.
+
+17.
+ Operate in advisory or parallel mode until the court approves production authority and operating procedures.
+
+18.
+ Measure usability, exception resolution, reconciliation effort, calculation transparency, alert usefulness, and support demand before broader rollout.
+
+
+9. Measures, Risks, and Decisions
+9.1 Suggested Measures
+Dimension
+ Illustrative Measures
+
+
+Accuracy and completeness
+ Unresolved exhibit discrepancies; missing required metadata; unmapped docket events; unreviewed calculation periods; post-close corrections.
+
+Timeliness
+ Time to record courtroom action; time to reconcile a session; age of open exceptions; time between source event and tracker review.
+
+Adoption and usability
+ Task completion success; user-reported confidence; training needs; manual parallel work; help requests by workflow.
+
+Risk visibility
+ Cases crossing thresholds; alerts acknowledged; missing findings references; custody transfers without acknowledgment; unauthorized-access attempts.
+
+Reliability
+ Availability during court hours; synchronization failures; recovery success; data-integrity checks; notification delivery status.
+
+
+
+9.2 Primary Risks and Mitigations
+Risk
+ Impact
+ Mitigation Direction
+
+
+Users treat calculation as legal determination
+ Overreliance on automation.
+ Persistent decision-support labeling, explainability, mandatory review states, and role-controlled finalization.
+
+Local practices differ
+ Poor fit or unsafe standardization.
+ Configurable court profiles, pilot validation, and governed local overrides.
+
+Source data is incomplete or late
+ Incorrect or stale status.
+ Source labeling, freshness indicators, exception queues, reconciliation, and manual correction with audit.
+
+Courtroom workflow is too slow
+ Users revert to paper or spreadsheets.
+ Observe proceedings, minimize interactions, support keyboard and quick actions, and test under realistic load.
+
+Sensitive evidence leaks
+ Privacy, safety, or legal harm.
+ Compartmented access, secure packaging, minimal notification content, encryption, and detailed audit.
+
+Two systems become isolated tools
+ Duplicate work and inconsistent case context.
+ Shared case model, identity, tasks, audit, search, integration, and common timeline services.
+
+AI suggestion is inaccurate
+ Misclassification or misplaced confidence.
+ Use assistive suggestions only, show source and confidence, require human confirmation, and monitor errors.
+
+
+
+9.3 Decisions Required Before Detailed Design
+
+ Will the Evidentiary Tracking module store exhibit files, reference an approved repository, or support both models?
+
+
+ Which exhibit categories remain with the parties or law-enforcement custodians, and what transfer records are required?
+
+
+ Which users may create, confirm, override, and certify exhibit and Speedy Trial records?
+
+
+ Which CM/ECF events, orders, and documents are available through supported interfaces, and how quickly do updates arrive?
+
+
+ What local Speedy Trial plans, rules, interpretations, and approval practices must be represented as configuration?
+
+
+ What information may external counsel view or submit, and at what stage?
+
+
+ What national configuration is centrally governed, and what can each court or division modify?
+
+
+ What outage, continuity, retention, and records-management requirements apply to each information category?
+
+
+10. Source Basis and Assumptions
+This document combines grounded problem statements with a proposed product vision. The source material explicitly identifies the operational problems and high-level opportunity hooks. The detailed features, roles, workflows, architecture, and delivery model in this vision are design recommendations that require validation with AOUSC, pilot courts, judges, clerks, courtroom deputies, defenders, prosecutors, court security, records staff, and judiciary IT.
+10.1 Grounded Source Findings
+Source
+ What It Supports
+
+
+3B_TechSur_Pain Points Ideation.docx, prepared by Third Branch Solutions for TechSur
+ Courtroom deputies commonly maintain exhibit logs using paper or spreadsheets; post-trial reconciliation is manual; a lightweight real-time evidence tracker, discrepancy checking, jury evidence bundling, and CM/ECF integration were proposed. The source also identifies Speedy Trial calculation complexity, manual inputs, limited proactive alerts, and the need for an intuitive calculator and alert system.
+
+U.S. District Court local exhibit rule example
+ Admitted exhibits may be delivered to the clerk or courtroom deputy, special-storage items may remain with an agency, parties may retain exhibits during appeal, and sealed documents have restricted disclosure. This confirms that custody and disposition are rule-dependent.
+
+U.S. District Court Speedy Trial plans and procedures
+ District plans address time limits, exclusions, continuances, records of excludable time, monitoring responsibilities, and local procedures. This confirms the need for court-specific configuration and transparent records.
+
+TechSur internal case-tracking and judiciary materials
+ Existing work emphasizes case lifecycle visibility, reporting, search, workflow automation, secure cloud delivery, and judiciary integration experience. These materials inform the reusable platform direction, not a claim that the proposed products already exist.
+
+
+
+10.2 Working Assumptions
+
+ The initial market is federal district courts, with possible later adaptation for defender organizations or other courts.
+
+
+ The official case-management and docket system remains the authoritative case record.
+
+
+ Local rules and court plans vary, so national deployment requires configuration and governance rather than one rigid workflow.
+
+
+ Judges and authorized court personnel retain final authority over rulings, findings, exclusions, corrections, and official records.
+
+
+ Production design will be based on validated interfaces and approved security, privacy, records, accessibility, and continuity requirements.
+
+
+10.3 References
+Type
+ Reference
+
+
+Internal
+ 3B_TechSur_Pain Points Ideation.docx, SharePoint document provided by the user.
+
+External
+ U.S. District Court for the District of Columbia, Speedy Trial Plan.
+
+External
+ U.S. District Court for the District of Minnesota, Local Rule 79.1, Custody and Disposition of Exhibits and Documents.
+
+External
+ U.S. District Court for the Southern District of Illinois, Criminal Case Management Procedures, including continuance and exhibit procedures.
+
+Internal
+ TechSur DOT Office of Hearings Case Tracking System modernization materials and court opportunity research.
+
+
+Next design artifact

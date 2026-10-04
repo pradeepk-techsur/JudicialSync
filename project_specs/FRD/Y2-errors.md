@@ -1,0 +1,36 @@
+## Y2: Cross-Feature Error Catalog
+
+This catalog consolidates error scenarios that recur across multiple features (rather than being specific to exactly one feature, which are instead documented in that feature's own Error States table). Feature-specific error codes remain in their respective `F{nn}-*.md` chunks; this catalog exists so implementers have a single reference for shared/systemic error handling conventions and codes used by more than one feature.
+
+### Conventions
+- Error codes follow the pattern `{DOMAIN}_{CONDITION}`, where `DOMAIN` identifies the owning feature area (AUTH, CASE, AUDIT, CONFIG, NOTIFY, SEARCH, TASK, EXCEPTION, TIMELINE, REPORT, CMECF, UI, PORTAL, SECURITY, EXHIBIT_SETUP, INTAKE, LEDGER, COURTROOM, RECONCILE, EXPORT, CUSTODY, SEAL, JURY, TYPE, CLOSEOUT, PORTFOLIO, TRACKER, EVENT, EXCLUSION, CALC, REVIEW, ALERT, DIFF, CONTINUANCE, MULTIDEF, CONFERENCE, GOVERNANCE, ANALYTICS, COURTTECH).
+- All error responses return a JSON body: `{error_code, message, detail?}`.
+- `403` is used for authorization/entitlement denials; `422` for validation/business-rule failures; `409` for state-conflict failures; `404` for not-found (including existence-hiding cases per F21/F05); `502/503` for upstream/dependency failures; `500` reserved for internal-guard violations that should structurally never occur (these indicate a defect, not a user error, and must be alerted to system administrators, not merely returned to the client).
+
+### Shared Systemic Error Scenarios
+
+| Scenario | HTTP Status | Error Code | Message | Applicable Features |
+|----------|-------------|------------|---------|----------------------|
+| Requester lacks required entitlement for the action | 403 | `*_ACCESS_DENIED` / `*_DENIED` | "You are not authorized to perform this action" | All features (F00 ABAC gate) |
+| Requester's security-designation entitlement insufficient for a sealed/restricted object | 403 (requester already has case-level access) or 404 (requester has no other access path — blind discovery) — see Principle 3 for the exact rule | `*_DESIGNATION_DENIED` (403) / `*_NOT_FOUND` (404) | "This record requires additional authorization" (403) or "not found" (404) | F00, F01, F02, F05, F08, F12, F16, F21 |
+| Rationale required but missing/too short on a legally significant action | 422 | `*_RATIONALE_REQUIRED` / `*_RATIONALE_TOO_SHORT` | "A rationale is required" / "Rationale must be at least 10 characters" | F07, F18, F28, F30 |
+| Attempt to edit/delete an immutable append-only record | 403 (internal guard) | `*_IMMUTABLE` | "This record cannot be modified after creation" | F02 (audit_events), F16 (exhibit_versions), F29 (calculation_versions), F30 (confirmed_exclusions) |
+| Separation-of-duties violation (self-approval, maker=checker) | 403 | `*_SOD_VIOLATION` | "A second approver is required" / "Cannot approve your own request" | F00, F03, F25, F37 |
+| Upstream/dependent service unavailable | 503 | `*_UNAVAILABLE` | "{Service} is temporarily unavailable" | F00 (IdP), F05 (index), F10 (CM/ECF), F13 (policy engine) |
+| Duplicate submission/delivery detected (idempotent handling) | 200 or 409 (context-dependent) | `*_DUPLICATE*` | "Duplicate ignored" / "This appears to be a duplicate" | F10, F15, F27 |
+| Attempt to perform an action requiring human confirmation without it | 403 (internal guard) | `*_UNCONFIRMED` / `*_AUTOMATED_DENIED` | "This action requires human confirmation" | F13 (disposition), F16 (ruling attribution), F26 (tracker confirm), F28/F29/F30 (no auto-finalization) |
+| File upload fails malware scan or file-type allowlist | 422 | `SECURITY_MALWARE_DETECTED` / `SECURITY_FILE_TYPE_DENIED` | "File rejected: failed security scan" / "This file type is not permitted" | F13, F15, F20 |
+| Resource not found or not within requester's authorized scope | 404 | `*_NOT_FOUND` | "{Resource} not found or not accessible" | All features with read endpoints |
+| Status/workflow transition not permitted from current state | 409 | `*_INVALID_TRANSITION` / `*_INVALID_ACTION` | "This action cannot be performed from the current state" | F03 (workflow states), F16, F17, F26 |
+| System-defect guard: output missing required explainability linkage | 500 (internal guard) | `*_MISSING_CONTEXT` / `*_UNATTRIBUTED_*` | "System defect: {detail}" — escalated to engineering/security, not shown as ordinary user error | F28, F29, F31, F32, F34 |
+
+### Error Handling Principles (binding across all features)
+
+1. **Fail closed, not open:** Any ambiguity in an access-control or policy-evaluation check (e.g., F13's policy engine unavailable) must deny the action (503/403) rather than default-allow.
+2. **No silent partial success:** Where an operation has multiple required side effects (e.g., a domain action + its audit event, per F02's transactional-outbox requirement), failure of any required side effect must roll back the entire operation, returning a clear error rather than leaving an inconsistent state.
+3. **Existence-hiding vs. designation-denial — the rule is context-dependent, not universal:**
+   - **404 (existence-hiding)** applies on *blind-discovery* paths, where the requester has no other access path that already confirms the object/case exists — e.g., Search (F05) query results, and a direct by-ID lookup of a sealed exhibit (F21) by a requester with no other entitlement on that case. Here, returning 403 would itself leak the existence of a sealed matter to someone who otherwise has no way to know about it, so the response must be indistinguishable from "this ID does not exist."
+   - **403 (designation-denied)** applies where the requester already has general, legitimate access to the parent case/object (e.g., they can see the case exists and hold some entitlement on it) and are only missing the *specific* sealed/restricted/grand-jury/juvenile entitlement needed for this particular sub-resource — e.g., F00 (`AUTH_DESIGNATION_DENIED`), F01 (`CASE_DESIGNATION_DENIED`), F02 (`AUDIT_DESIGNATION_DENIED`), F12 (`PORTAL_DESIGNATION_DENIED`), F16 (`LEDGER_DESIGNATION_DENIED`). In these cases the case/object's existence is already known to the requester through legitimate access, so a 403 with "additional authorization required" does not leak new information — it only confirms that *this specific sub-resource* carries extra sensitivity, which the requester's existing case access already implies is possible.
+   - **Implementers must apply this test per endpoint:** if the requester has no other legitimate path to learn the object exists, fail closed with 404; if the requester's existing access already implies the object's existence, 403 is correct and preferred (it is more actionable for a legitimate user who simply needs to request additional entitlement).
+4. **Human-readable + machine-readable:** Every error response carries both a stable `error_code` for programmatic handling and a `message` suitable for direct display to court staff (never a raw stack trace or internal exception string).
+5. **Legally significant actions never fail silently:** Any error blocking a ruling, exclusion confirmation, override, or finding must be surfaced immediately and distinctly in the relevant UI workspace (F11) — these are never queued for later retry without explicit user awareness.
