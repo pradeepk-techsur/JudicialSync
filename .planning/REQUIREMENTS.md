@@ -90,40 +90,40 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| F0 | TBD | Pending |
-| F1 | TBD | Pending |
-| F2 | TBD | Pending |
-| F3 | TBD | Pending |
-| F4 | TBD | Pending |
-| F5 | TBD | Pending |
-| F6 | TBD | Pending |
-| F7 | TBD | Pending |
-| F8 | TBD | Pending |
-| F9 | TBD | Pending |
-| F10 | TBD | Pending |
-| F11 | TBD | Pending |
-| F12 | TBD | Pending |
-| F13 | TBD | Pending |
-| F14 | TBD | Pending |
-| F15 | TBD | Pending |
-| F16 | TBD | Pending |
-| F17 | TBD | Pending |
-| F18 | TBD | Pending |
-| F19 | TBD | Pending |
-| F26 | TBD | Pending |
-| F27 | TBD | Pending |
-| F28 | TBD | Pending |
-| F29 | TBD | Pending |
-| F30 | TBD | Pending |
-| F31 | TBD | Pending |
-| F32 | TBD | Pending |
-| F35 | TBD | Pending |
+| F0 | Phase 1: Core Identity, Case Model, Audit & Security Baseline | Pending |
+| F1 | Phase 1: Core Identity, Case Model, Audit & Security Baseline | Pending |
+| F2 | Phase 1: Core Identity, Case Model, Audit & Security Baseline | Pending |
+| F3 | Phase 2: Platform Configuration & Communication Services | Pending |
+| F4 | Phase 2: Platform Configuration & Communication Services | Pending |
+| F5 | Phase 2: Platform Configuration & Communication Services | Pending |
+| F6 | Phase 3: Workflow Aggregation & CM/ECF Sync | Pending |
+| F7 | Phase 3: Workflow Aggregation & CM/ECF Sync | Pending |
+| F8 | Phase 3: Workflow Aggregation & CM/ECF Sync | Pending |
+| F9 | Phase 3: Workflow Aggregation & CM/ECF Sync | Pending |
+| F10 | Phase 3: Workflow Aggregation & CM/ECF Sync | Pending |
+| F11 | Phase 4: Role-Specific UI Workspaces & External Attorney Portal | Pending |
+| F12 | Phase 4: Role-Specific UI Workspaces & External Attorney Portal | Pending |
+| F13 | Phase 1: Core Identity, Case Model, Audit & Security Baseline | Pending |
+| F14 | Phase 5: Evidentiary Tracking Core | Pending |
+| F15 | Phase 5: Evidentiary Tracking Core | Pending |
+| F16 | Phase 5: Evidentiary Tracking Core | Pending |
+| F17 | Phase 5: Evidentiary Tracking Core | Pending |
+| F18 | Phase 6: Evidentiary Tracking Reconciliation & Closeout | Pending |
+| F19 | Phase 6: Evidentiary Tracking Reconciliation & Closeout | Pending |
+| F26 | Phase 7: Speedy Trial Tracker Core | Pending |
+| F27 | Phase 7: Speedy Trial Tracker Core | Pending |
+| F28 | Phase 7: Speedy Trial Tracker Core | Pending |
+| F29 | Phase 7: Speedy Trial Tracker Core | Pending |
+| F30 | Phase 7: Speedy Trial Tracker Core | Pending |
+| F31 | Phase 8: Speedy Trial Tracker Alerts & Visibility | Pending |
+| F32 | Phase 8: Speedy Trial Tracker Alerts & Visibility | Pending |
+| F35 | Phase 8: Speedy Trial Tracker Alerts & Visibility | Pending |
 
 **Coverage:**
 - v1 requirements: 28 total
-- Mapped to phases: 0 (pending roadmap creation)
-- Unmapped: 28 ⚠️ (expected — roadmapper fills this next)
+- Mapped to phases: 28 ✓
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-04*
-*Last updated: 2026-10-04 after initial definition*
+*Last updated: 2026-10-04 after roadmap creation (8 phases, 100% v1 coverage)*
