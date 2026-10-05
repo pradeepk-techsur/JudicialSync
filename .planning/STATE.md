@@ -2,16 +2,16 @@
 pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-10-05T10:51:05.865Z"
-last_activity: 2026-10-04 — Roadmap created (8 phases, 28/28 v1 requirements mapped)
+status: executing
+stopped_at: Completed 01-02-PLAN.md (OPA/Rego authorization policy bundle)
+last_updated: "2026-10-05T12:54:44.863Z"
+last_activity: 2026-10-05 — Plan 01-02 complete (OPA/Rego authorization policy bundle, 55 tests passing)
 progress:
   total_phases: 8
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 15
+  completed_plans: 2
+  percent: 1
 ---
 
 # Project State
@@ -26,30 +26,36 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 ## Current Position
 
 Phase: 1 of 8 (Core Identity, Case Model, Audit & Security Baseline)
-Plan: Not yet planned
-Status: Ready to plan
-Last activity: 2026-10-04 — Roadmap created (8 phases, 28/28 v1 requirements mapped)
+Plan: 3 of 15
+Status: Executing
+Last activity: 2026-10-05 — Plan 01-02 complete (OPA/Rego authorization policy bundle, 55 tests passing)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [░░░░░░░░░░] 1%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: - min
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: 42 min
+- Total execution time: 0.7 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| Phase 01 | 1 | 42 min | 42 min |
+
+**Per-plan detail:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| 01-02 | 42 min | 3 | 14 |
 
 **Recent Trend:**
 
-- Last 5 plans: -
-- Trend: N/A (no plans executed yet)
+- Last 5 plans: 01-02 (42 min)
+- Trend: N/A (single data point)
 
 *Updated after each plan completion*
 
@@ -63,6 +69,10 @@ Recent decisions affecting current work:
 - Roadmap: Shared platform foundation split into 4 phases (identity/case/audit/security → config/notifications/search → work queue/exception/timeline/reporting/CM-ECF → UI workspaces/attorney portal) to respect TechArch dependency layering before either domain module begins.
 - Roadmap: Evidentiary Tracking (Phases 5–6) and Speedy Trial Tracker (Phases 7–8) both depend only on Phase 4 and are architecturally independent — may be executed in parallel or either order.
 - Roadmap: v2 requirements (F20-F25, F33-F34, F36-F39) explicitly excluded from all phases per REQUIREMENTS.md scope.
+- [Phase 01]: Policy bundle (policy/**) is owned by plan 01-02; later plans adding a route request an action_entitlement_map row there rather than editing the bundle — an unmapped (type, action) pair is denied by design
+- [Phase 01]: Authorization allow can only come from an entitlement match, never a role match — roles may only deny (RBAC gate) or scope (court/division), making 'role existence never implies access' structural
+- [Phase 01]: input.security_policies replaces the built-in designation→entitlement map wholesale rather than merging, so configuration can genuinely change a mapping; a designation absent from a supplied set denies
+- [Phase 01]: Scope assignments express granularity not a checklist: the court check is unconditional (multi-tenancy boundary) while division/case/proceeding checks apply only to principals holding scopes of that type
 
 ### Pending Todos
 
@@ -74,6 +84,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-05T10:51:05.864Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-core-identity-case-model-audit-security-baseline/01-CONTEXT.md
+Last session: 2026-10-05T12:54:44.862Z
+Stopped at: Completed 01-02-PLAN.md (OPA/Rego authorization policy bundle)
+Resume file: None
