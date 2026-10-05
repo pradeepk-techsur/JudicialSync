@@ -13,6 +13,7 @@
     "test:assurance": "jest --config jest.assurance.config.js --runInBand",
     "test:auth": "jest --config jest.auth.config.js --runInBand",
     "test:policy": "jest --config jest.policy.config.js --runInBand",
+    "test:grants": "jest --config jest.grants.config.js --runInBand",
     "db:migrate": "DATABASE_URL=$MIGRATION_DATABASE_URL prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "openapi:emit": "tsx scripts/emit-openapi.ts"

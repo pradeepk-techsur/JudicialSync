@@ -119,3 +119,56 @@ with two silently dead endpoints. Plan **01-14** (assurance) is the natural
 owner, and the durable fix is a test that calls an internal route through the
 deployed container rather than in-process — the gap is a *coverage* gap as much
 as a configuration one.
+
+---
+
+## DEF-03 (found in 01-08): no seeded `access_admin` holder can administer an NDCA user
+
+**Status:** open — fixture gap, not a policy or application defect.
+
+**What the seed produces.** `apps/api/prisma/seed/identity.ts` puts both holders
+of `access_admin` — `system_admin` (Priya Nandan) and `security_officer` (Samuel
+Adeyemi) — in **SDNY**, and the other eight seeded users, including every
+plausible grant *subject*, in **NDCA**. Each user gets exactly one court scope
+row, matching their role's court.
+
+**What actually happens.** `AbacGuard` resolves an `entitlement_grant`'s court
+from the grant's SUBJECT (`resource-loader.service.ts` → `courtOfUser`), and
+`abac.rego`'s court check is unconditional because `court_id` is the
+multi-tenancy boundary. So an SDNY administrator revoking a grant held by an
+NDCA user is refused `403 AUTH_SCOPE_DENIED` — correctly. The same applies to
+creating a request whose administrative `court_id` is NDCA.
+
+The consequence is narrow but real: **as seeded, nobody can administer access
+for eight of the ten users.** Every grant the seed itself writes is pre-approved
+directly in SQL, so this never surfaced before a plan tried to drive the grant
+workflow over HTTP.
+
+**Why nothing caught it.** 01-04 asserts the seeded rows exist, not what they
+authorize. 01-02 evaluates synthetic principals it constructs itself. 01-07's
+guard suite uses `case` resources, whose court comes from the case rather than
+from a user. The gap lives precisely between "the rows are right" and "the rows
+compose into a usable system" — the same shape as DEF-01, and found the same
+way: by running the real flow against the real stack.
+
+**How 01-08 handled it.** `grants-sod.e2e-spec.ts` adds the missing NDCA court
+scope to `system_admin` in-test and removes it in teardown. Crucially it also
+asserts the denial that occurs *without* the scope (`the court boundary on
+revocation (DEF-03)`), so the workaround cannot quietly become a way of not
+noticing if the court semantics ever change — the same treatment 01-07 gave
+DEF-01.
+
+**Recommended fix (NOT taken here — `prisma/seed/identity.ts` is plan 01-04's
+file).** One additional `scope_assignments` row giving `system_admin` a `court`
+scope on NDCA, with a comment saying why: a platform administrator legitimately
+administers more than one court, and a seed in which no administrator can
+administer anybody is not a usable fixture. Plan **01-14** (assurance) is the
+natural owner, alongside DEF-01's one-row fix in the same file.
+
+**Do NOT "fix" this by weakening the court check.** The unconditional court
+comparison is the multi-tenancy boundary (`TechArch/00-overview.md` §159,
+"court-level multi-tenancy by court_id enforced at the ABAC layer"). Making it
+conditional the way division/case/proceeding checks are conditional would let
+any principal holding `access_admin` grant entitlements to users in courts they
+have no relationship with — which is the single most valuable escalation
+available on this endpoint.
