@@ -3,7 +3,7 @@ phase: 01
 gate_status: passed
 build_command: "npm run build"
 test_command: "npm test"
-last_updated: 2026-10-05T13:17:00Z
+last_updated: 2026-10-05T14:27:19Z
 tests_disabled_during_fixes: none
 shadowed_sources: 0
 waves:
@@ -12,6 +12,10 @@ waves:
     tests: pass
     fix_attempts: 0
   - wave: 2
+    build: pass
+    tests: pass
+    fix_attempts: 0
+  - wave: 3
     build: pass
     tests: pass
     fix_attempts: 0
@@ -83,6 +87,85 @@ Test Suites: 3 passed, 3 total
 Tests:       28 passed, 28 total
 Snapshots:   0 total
 Time:        4.651 s, estimated 5 s
+Ran all test suites.
+```
+
+## Wave 3
+
+- Build: `npm run build` → pass
+- Tests: `npm test` → pass
+- Fix attempts: 0/3
+
+### Gate output
+
+```
+> build
+> npm run build --workspaces --if-present
+
+
+> @judicialsync/api@0.1.0 build
+> nest build
+
+
+> test
+> npm run test --workspaces --if-present
+
+
+> @judicialsync/api@0.1.0 test
+> jest --config jest.config.js
+
+[31m[Nest] 288498  - [39m10/05/2026, 2:27:01 PM [31m  ERROR[39m [38;5;3m[ServiceTokenGuard] [39m[31mINTERNAL_SERVICE_TOKEN is not configured; denying every call to POST /audit/events. Set it from the secrets manager — an unset secret must never mean "allow anyone".[39m
+[31m[Nest] 288498  - [39m10/05/2026, 2:27:01 PM [31m  ERROR[39m [38;5;3m[ServiceTokenGuard] [39m[31mINTERNAL_SERVICE_TOKEN is not configured; denying every call to POST /audit/events. Set it from the secrets manager — an unset secret must never mean "allow anyone".[39m
+PASS test/audit-write.e2e-spec.ts
+PASS test/seed-idempotency.e2e-spec.ts
+PASS test/context-boot.e2e-spec.ts
+[31m[Nest] 288498  - [39m10/05/2026, 2:27:07 PM [31m  ERROR[39m [38;5;3m[withAudit] [39m[31mAudit write failed; domain transaction rolled back: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `23503`. Message: `insert or update on table "audit_events" violates foreign key constraint "audit_events_actor_id_fkey"`[39m
+PrismaClientKnownRequestError: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `23503`. Message: `insert or update on table "audit_events" violates foreign key constraint "audit_events_actor_id_fkey"`
+    at $n.handleRequestError (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:121:7315)
+    at $n.handleAndLogRequestError (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:121:6623)
+    at $n.request (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:121:6307)
+    at l (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:130:9633)
+    at AuditService.record (/home/daytona/project/apps/api/src/modules/audit/audit.service.ts:121:22)
+    at prisma.$transaction.maxWait (/home/daytona/project/apps/api/src/modules/audit/with-audit.ts:147:11)
+    at Proxy._transactionWithCallback (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:130:8000)
+    at withAudit (/home/daytona/project/apps/api/src/modules/audit/with-audit.ts:130:12)
+    at Object.<anonymous> (/home/daytona/project/apps/api/test/audit-outbox.e2e-spec.ts:116:21)
+[31m[Nest] 288498  - [39m10/05/2026, 2:27:07 PM [31m  ERROR[39m [38;5;3m[withAudit] [39m[31mAudit write failed; domain transaction rolled back: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `23503`. Message: `insert or update on table "audit_events" violates foreign key constraint "audit_events_actor_id_fkey"`[39m
+PrismaClientKnownRequestError: 
+Invalid `prisma.$queryRaw()` invocation:
+
+
+Raw query failed. Code: `23503`. Message: `insert or update on table "audit_events" violates foreign key constraint "audit_events_actor_id_fkey"`
+    at $n.handleRequestError (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:121:7315)
+    at $n.handleAndLogRequestError (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:121:6623)
+    at $n.request (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:121:6307)
+    at l (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:130:9633)
+    at AuditService.record (/home/daytona/project/apps/api/src/modules/audit/audit.service.ts:121:22)
+    at prisma.$transaction.maxWait (/home/daytona/project/apps/api/src/modules/audit/with-audit.ts:147:11)
+    at Proxy._transactionWithCallback (/home/daytona/project/node_modules/@prisma/client/runtime/library.js:130:8000)
+    at withAudit (/home/daytona/project/apps/api/src/modules/audit/with-audit.ts:130:12)
+    at Object.<anonymous> (/home/daytona/project/apps/api/test/audit-outbox.e2e-spec.ts:219:7)
+PASS test/audit-outbox.e2e-spec.ts
+PASS test/audit-canonical-parity.e2e-spec.ts
+PASS test/schema-grants.e2e-spec.ts
+PASS test/guards-fail-closed.e2e-spec.ts
+
+Test Suites: 7 passed, 7 total
+Tests:       134 passed, 134 total
+Snapshots:   0 total
+Time:        13.107 s
 Ran all test suites.
 ```
 
