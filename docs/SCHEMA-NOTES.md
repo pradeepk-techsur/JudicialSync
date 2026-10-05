@@ -193,6 +193,15 @@ Three tiers worth understanding:
 > `ALL PRIVILEGES` on a new table would widen the posture silently and the
 > failure would surface, if ever, as a missing row. With it, the deploy fails
 > and names the table.
+>
+> One honest caveat about the block *as it appears in `…000100`*: that file
+> opens with `REVOKE ALL`, so by the time the assertion runs there is nothing
+> left for it to catch. It cannot fail there regardless of what preceded it.
+> Its value in that file is as a **template**. Later grant migrations will not
+> start from zero — they will add a grant to a live schema — and there the same
+> block is a genuine gate. It is verified to fire against a deliberately
+> planted DELETE grant in `apps/api/test/schema-grants.e2e-spec.ts`, so the
+> control is tested rather than merely written.
 
 `ALTER DEFAULT PRIVILEGES IN SCHEMA platform REVOKE DELETE ON TABLES FROM app_rw`
 covers the same ground for tables that do not exist yet, but it is a backstop,
