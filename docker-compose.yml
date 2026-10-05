@@ -34,11 +34,40 @@
 
 name: judicialsync
 
+# =============================================================================
+# SHARED: resolver settings
+# =============================================================================
+#
+# Every service merges `<<: *sandbox-dns`. It exists to undo something the
+# HOST imposes on us.
+#
+# Docker copies the host's `/etc/resolv.conf` search list and options into
+# every container. On a Kubernetes-hosted sandbox that host file carries
+# `search prod.svc.cluster.local svc.cluster.local cluster.local` and
+# `options ndots:5`. `ndots:5` means any name with fewer than five dots is
+# tried against each search domain FIRST — so a lookup for `keycloak` becomes
+# `keycloak.prod.svc.cluster.local`, `keycloak.svc.cluster.local`,
+# `keycloak.cluster.local`, all NXDOMAIN, and resolution fails before the
+# bare name is ever tried against Docker's embedded resolver at 127.0.0.11.
+#
+# The symptom is `getaddrinfo ENOTFOUND keycloak` from a container that is on
+# the same network as a perfectly healthy `keycloak` — and it is intermittent
+# across services, because a name already in the resolver cache still answers.
+# That intermittency is what makes it expensive to diagnose.
+#
+# `dns_search: ['.']` clears the inherited list, so short service names
+# resolve directly. It affects only name resolution inside the Compose
+# network; nothing else about the sandbox changes.
+x-sandbox-dns: &sandbox-dns
+  dns_search:
+    - '.'
+
 services:
   # ---------------------------------------------------------------------------
   # PostgreSQL — the platform schema
   # ---------------------------------------------------------------------------
   db:
+    <<: *sandbox-dns
     image: postgres:15.7-alpine
     restart: unless-stopped
     environment:
@@ -66,6 +95,7 @@ services:
   # seeded as configuration data (rule_package_versions.config_snapshot), never
   # as a TypeScript constant.
   redis:
+    <<: *sandbox-dns
     image: redis:7.2-alpine
     restart: unless-stopped
     command: ['redis-server', '--appendonly', 'yes']
@@ -85,6 +115,7 @@ services:
   # agree: a policy bundle that passes its unit tests under one OPA version and
   # is evaluated by another is an untested policy.
   opa:
+    <<: *sandbox-dns
     image: openpolicyagent/opa:0.64.1-static
     restart: unless-stopped
     command:
@@ -121,6 +152,7 @@ services:
   # nothing below leaks into application code: the API knows only
   # OIDC_ISSUER_URL.
   keycloak:
+    <<: *sandbox-dns
     image: quay.io/keycloak/keycloak:24.0.5
     restart: unless-stopped
     command: ['start-dev', '--import-realm']
@@ -182,6 +214,7 @@ services:
   # The sandbox may have no outbound network, so the signature-carrying tag is
   # the correct one. FRESHCLAM_CHECKS=0 then stops it dialling out on a timer.
   clamav:
+    <<: *sandbox-dns
     image: clamav/clamav:1.4.3
     restart: unless-stopped
     environment:
@@ -211,6 +244,7 @@ services:
   # presigned URL handed to the client. No host port is published, which makes
   # that structural rather than advisory.
   minio:
+    <<: *sandbox-dns
     image: chainguard/minio@sha256:4cf4831a2bbcf13ddca09c1cbcc9faff716dd3c4247e0babc32864b8ee8e0034
     restart: unless-stopped
     command: ['server', '/data', '--console-address', ':9001']
@@ -243,6 +277,7 @@ services:
   # Caddy — the single TLS origin
   # ---------------------------------------------------------------------------
   proxy:
+    <<: *sandbox-dns
     image: caddy:2.8-alpine
     restart: unless-stopped
     ports:
@@ -278,6 +313,7 @@ services:
   # Platform Core API
   # ---------------------------------------------------------------------------
   api:
+    <<: *sandbox-dns
     build:
       context: .
       dockerfile: Dockerfile
