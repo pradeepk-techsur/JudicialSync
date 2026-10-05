@@ -1,0 +1,56 @@
+# =============================================================================
+# JudicialSync — authorization policy gate
+# =============================================================================
+#
+# OWNERSHIP: this file belongs to plan 01-02 and NO LATER PLAN EDITS IT.
+# It is a SIBLING of ci.yml (plan 01-01), not a job appended to it — Phase 1
+# plans run partly in parallel, so a shared workflow file would be a guaranteed
+# merge conflict. See the ownership table at the top of ci.yml.
+#
+# WHAT THIS GATE PROTECTS: `policy/` is the system's single authorization
+# brain. `TechArch/04-security.md` §8.5 requires policy be "written once and
+# versioned like code, with its own test suite" — this workflow is what makes
+# that true rather than aspirational. A regression here is an authorization
+# regression, which is why it is a separate, self-describing check: a red run
+# names the guarantee that broke rather than just "CI".
+#
+# The suite includes the negative-path tests Phase 1's success criteria 1 and 4
+# depend on (role-without-entitlement denied, cross-court denied, sealed-record
+# 403-vs-404, self-approval denied).
+# =============================================================================
+
+name: Policy
+
+on:
+  push:
+  pull_request:
+
+# A new push to the same branch makes an in-flight run obsolete.
+concurrency:
+  group: policy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  policy-test:
+    name: OPA policy tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cache the self-bootstrapped OPA binary. scripts/opa-test.sh downloads
+      # it on a miss and verifies the version on a hit, so a stale cache from a
+      # different pin cannot silently test against different semantics.
+      - name: Cache OPA binary
+        uses: actions/cache@v4
+        with:
+          path: .tools
+          key: opa-0.64.1-${{ runner.os }}
+
+      # The script runs `opa check` (syntax + type errors across the bundle)
+      # followed by `opa test -v`, and exits non-zero on either. No Node
+      # toolchain is needed — this plan deliberately writes no TypeScript.
+      - name: Run policy suite
+        run: scripts/opa-test.sh
