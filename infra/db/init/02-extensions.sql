@@ -1,0 +1,56 @@
+-- =============================================================================
+-- PostgreSQL extensions — pinned to an explicit schema
+-- =============================================================================
+--
+-- Mounted into `/docker-entrypoint-initdb.d/` by docker-compose.yml, so this
+-- runs exactly once at cluster initialization, AFTER 01-roles.sql and BEFORE
+-- any migration.
+--
+-- ## Why this file exists
+--
+-- `20260101000000_platform_schema` contains:
+--
+--     CREATE EXTENSION IF NOT EXISTS pgcrypto;
+--
+-- with no `SCHEMA` clause. PostgreSQL then installs the extension into **the
+-- first schema on the creating session's `search_path`** — so where `digest()`
+-- ends up is a property of the connection string, not of the migration.
+--
+-- That makes the two ways this project applies its migrations disagree:
+--
+--   * The Compose stack migrates over `MIGRATION_DATABASE_URL`, which carries
+--     `?schema=platform`. Prisma sets `search_path = platform`, so pgcrypto
+--     installs as `platform.digest()`.
+--   * `apps/api/test/testcontainers-postgres.ts` applies the same files through
+--     `psql`, which leaves `search_path` at its default. pgcrypto installs as
+--     `public.digest()`.
+--
+-- Any SQL that resolves `digest()` against a fixed schema is therefore correct
+-- in exactly one of those two environments. That is not hypothetical: plan
+-- 01-05's `20260101000300_audit_hash_search_path` hardens
+-- `compute_audit_row_hash` with `SET search_path = pg_catalog, public` — the
+-- right fix for the harness, and one that fails against the Compose database
+-- with `42883 function digest(bytea, unknown) does not exist`, aborting the
+-- migration and leaving `_prisma_migrations` in a failed state that blocks
+-- every subsequent boot with P3009.
+--
+-- ## The fix
+--
+-- Create the extension explicitly in `public` before any migration runs. The
+-- migration's `IF NOT EXISTS` then finds it and does nothing, so the location
+-- stops depending on whoever happens to be connected. `public` is the target
+-- rather than `platform` because it is what every search_path already
+-- includes by default, and because an extension is a database-wide facility
+-- rather than a member of this application's schema.
+--
+-- This belongs in init rather than in a migration for the same reason
+-- 01-roles.sql does: it must be true *before* the first migration executes,
+-- and a migration cannot establish its own precondition.
+-- =============================================================================
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA public;
+
+-- Any role that executes the audit hash function needs to be able to reach
+-- digest() through it. The function is IMMUTABLE and SECURITY INVOKER, so the
+-- caller's own rights apply.
+GRANT USAGE ON SCHEMA public TO app_dba, app_rw;

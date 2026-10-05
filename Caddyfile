@@ -1,0 +1,79 @@
+# =============================================================================
+# JudicialSync — the single TLS origin
+# =============================================================================
+#
+# WHY THIS FILE EXISTS AT ALL.
+#
+# OIDC validation compares the `iss` claim in a token against the issuer the
+# relying party discovered. If the browser talks to Keycloak at one URL and the
+# API container talks to it at another, those two strings differ and every
+# login fails with an error that points at the token rather than at the
+# network. The usual local-dev workarounds — `localhost:8080` for the browser,
+# `keycloak:8080` for the API — produce exactly that mismatch.
+#
+# The fix is to give Keycloak ONE address that is correct from both sides.
+# `judicialsync.localhost` resolves to loopback in the browser (RFC 6761
+# reserves `.localhost`, and `scripts/ensure-hosts.sh` covers resolvers that
+# do not implement the wildcard), and inside the Compose network a network
+# alias on this proxy service makes the same name resolve to Caddy. One name,
+# one scheme, one port, one issuer.
+#
+# TLS is terminated here and ONLY here. `TechArch/04-security.md` §7.5 and
+# `FRD/F13` require TLS 1.2+ in transit "with no fallback to unencrypted
+# transport": neither `api` nor `keycloak` publishes a host port, so there is
+# no plaintext path to either from outside the Compose network (threat T-01-12).
+#
+# The certificate comes from Caddy's internal CA (`tls internal`). The API
+# container TRUSTS that CA by importing its root certificate — it does not
+# disable verification. `NODE_TLS_REJECT_UNAUTHORIZED` is never set anywhere in
+# this repository; see threat T-01-13.
+#
+# Production terminates TLS at the cloud gateway with a real certificate. That
+# deployment IaC is deliberately deferred (Phase 1 CONTEXT), which is precisely
+# why this file must not grow any production-shaped configuration.
+# =============================================================================
+
+{
+	# Caddy would otherwise open :80 and emit HTTP->HTTPS redirects. There is no
+	# plaintext listener in this stack at all, so there is nothing to redirect
+	# from, and binding :80 would create the very path T-01-12 forbids.
+	auto_https disable_redirects
+
+	# Local development only. An internally-issued certificate does not need an
+	# ACME account, and this keeps Caddy from reaching for the network.
+	email admin@judicialsync.invalid
+}
+
+judicialsync.localhost:8443 {
+	tls internal
+
+	encode gzip
+
+	log {
+		output stdout
+		format console
+	}
+
+	# --- Identity provider -----------------------------------------------
+	# Keycloak runs with KC_HTTP_RELATIVE_PATH=/auth, so its own routes already
+	# begin with /auth and the prefix is passed through unchanged. Combined
+	# with KC_HOSTNAME=https://judicialsync.localhost:8443/auth, the issuer
+	# Keycloak advertises is byte-identical to the URL both the browser and the
+	# API container use to reach it.
+	handle /auth/* {
+		reverse_proxy keycloak:8080
+	}
+
+	# --- Platform Core API -------------------------------------------------
+	# The API sets a global `/api/v1` prefix (apps/api/src/main.ts), so the
+	# prefix is passed through rather than stripped.
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	# --- Everything else ---------------------------------------------------
+	# Plan 01-13 replaces this block with: reverse_proxy web:5173
+	handle {
+		respond "JudicialSync Platform Core. UI ships in plan 01-13. API: /api/v1/health" 200
+	}
+}

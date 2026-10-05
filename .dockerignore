@@ -1,0 +1,62 @@
+# =============================================================================
+# Build-context exclusions
+# =============================================================================
+#
+# Keeping the context small is not only about speed. `.env` carries local
+# credentials and MUST NOT be baked into an image layer
+# (`TechArch/05-tech-stack.md` §8.4: "no credentials embedded in code or
+# container images"); `.git` carries the entire history including anything ever
+# committed. Both are excluded here rather than relied upon not to be COPYed.
+# =============================================================================
+
+# Dependencies and build output — reinstalled/rebuilt inside the image, and a
+# host node_modules built on a different platform would be actively wrong.
+node_modules
+**/node_modules
+dist
+**/dist
+build
+coverage
+**/coverage
+.tsbuildinfo
+**/*.tsbuildinfo
+
+# Secrets. See the header.
+.env
+.env.*
+!.env.example
+
+# Version control and CI.
+.git
+.gitignore
+.github
+
+# Planning and specification material — large, and irrelevant to a running
+# container.
+.planning
+project_specs
+docs
+
+# Test artefacts.
+test-results
+playwright-report
+**/*.e2e-spec.ts
+**/*.spec.ts
+
+# Infrastructure that is mounted at runtime rather than baked in. The Keycloak
+# realm and the database init SQL are bind-mounted by docker-compose.yml, and
+# the policy bundle is mounted into the OPA container — baking any of them into
+# the API image would create a second, silently-stale copy.
+infra
+policy
+Caddyfile
+docker-compose.yml
+
+# Editor and OS noise.
+.vscode
+.idea
+.DS_Store
+.opencode
+.tools
+opencode.json
+AGENTS.md

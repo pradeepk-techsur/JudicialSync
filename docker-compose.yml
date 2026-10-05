@@ -1,0 +1,405 @@
+# =============================================================================
+# JudicialSync — Phase 1 runnable stack
+# =============================================================================
+#
+# Phase 1 CONTEXT: "Docker Compose is the Phase 1 deployment target … Anyone
+# must be able to clone and reach a working system with `docker compose up`."
+# This file IS that deployment target, and it is the only infrastructure spec
+# in the repository. Kubernetes manifests, Terraform, Helm and Kong are
+# explicitly deferred — they are unbuildable and unverifiable until a real
+# deployment target exists.
+#
+# THE THREE PROPERTIES THIS FILE HAS TO GET RIGHT
+#
+#  1. ONE TLS ORIGIN. Only `proxy` publishes a host port (8443). `api` and
+#     `keycloak` are reachable solely across the internal network, so there is
+#     no plaintext path to either (threat T-01-12, FRD/F13 "TLS 1.2+ with no
+#     fallback to unencrypted transport").
+#
+#  2. ONE ISSUER URL. `proxy` carries the network alias
+#     `judicialsync.localhost`, so that hostname resolves to Caddy from inside
+#     the network and to loopback from the browser. Keycloak advertises
+#     `https://judicialsync.localhost:8443/auth/realms/judicialsync` and both
+#     sides reach it at exactly that string — which is what makes real OIDC,
+#     rather than a stub, actually work.
+#
+#  3. MIGRATE -> SEED -> SERVE, AFTER DEPENDENCIES ARE HEALTHY. Every datastore
+#     declares a healthcheck and `api` waits on `service_healthy`. The seed is
+#     idempotent (apps/api/prisma/seed.ts) precisely because the volume
+#     persists and this sequence replays on every boot.
+#
+# IMAGE PINNING: every image is pinned to an exact version. `:latest` is banned
+# — it defeats the sandbox image cache and makes a build non-reproducible.
+# =============================================================================
+
+name: judicialsync
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — the platform schema
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:15.7-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_local_dev}
+      POSTGRES_DB: judicialsync
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Creates app_dba and app_rw at cluster init, BEFORE any migration runs —
+      # the append-only grant migration cannot grant to roles that do not yet
+      # exist. Runs exactly once, on an empty data volume.
+      - ./infra/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d judicialsync']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # Redis — BullMQ backend and the short entitlement-claim cache
+  # ---------------------------------------------------------------------------
+  # TechArch/04-security.md §7.2: authorization claims are cached for a
+  # "configurable short cache window, default 5 minutes". The window itself is
+  # seeded as configuration data (rule_package_versions.config_snapshot), never
+  # as a TypeScript constant.
+  redis:
+    image: redis:7.2-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # OPA — the Policy Decision Point
+  # ---------------------------------------------------------------------------
+  # Version pinned to match OPA_VERSION in scripts/opa-test.sh. The two must
+  # agree: a policy bundle that passes its unit tests under one OPA version and
+  # is evaluated by another is an untested policy.
+  opa:
+    image: openpolicyagent/opa:0.64.1-static
+    restart: unless-stopped
+    command:
+      - 'run'
+      - '--server'
+      - '--addr=0.0.0.0:8181'
+      - '--log-level=info'
+      - '/policies'
+    volumes:
+      - ./policy:/policies:ro
+    healthcheck:
+      # The `-static` image is distroless: no shell, no curl, no wget. OPA's
+      # own binary is the only executable present, so the probe is expressed as
+      # a Rego evaluation against the server's /health endpoint. `--fail`
+      # yields a non-zero exit on a false result.
+      test:
+        [
+          'CMD',
+          '/opa',
+          'eval',
+          '--fail',
+          'http.send({"method":"GET","url":"http://127.0.0.1:8181/health","raise_error":false}).status_code == 200',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # Keycloak — the stand-in court identity provider
+  # ---------------------------------------------------------------------------
+  # CONTEXT: "Keycloak acts as the stand-in court IdP with a seeded realm …
+  # Swapping in a court's real IdP must be a configuration change." That is why
+  # nothing below leaks into application code: the API knows only
+  # OIDC_ISSUER_URL.
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    restart: unless-stopped
+    command: ['start-dev', '--import-realm']
+    environment:
+      # Serve everything under /auth so a single Caddy route can carry the IdP
+      # without colliding with /api.
+      KC_HTTP_RELATIVE_PATH: /auth
+      # Trust X-Forwarded-* from Caddy. Without this Keycloak builds its URLs
+      # from the internal request and the issuer stops matching.
+      KC_PROXY_HEADERS: xforwarded
+      # THE setting that makes the issuer identical on both sides.
+      #
+      # KC_HOSTNAME_URL (`--hostname-url`), not KC_HOSTNAME. In Keycloak 24
+      # these are different options with different grammars: `--hostname`
+      # takes a BARE HOSTNAME, while `--hostname-url` takes a full base URL
+      # "including scheme, host, port and path". Passing a URL to the former
+      # does not error — Keycloak concatenates it with the scheme and the
+      # relative path it derives separately, and advertises an issuer of
+      # `https://https//judicialsync.localhost:8443/auth/auth/realms/...`.
+      # Every OIDC client then rejects every token for an `iss` mismatch
+      # whose cause is nowhere near the token.
+      #
+      # The path segment is /auth to match KC_HTTP_RELATIVE_PATH and the Caddy
+      # route; all three must agree.
+      KC_HOSTNAME_URL: https://judicialsync.localhost:8443/auth
+      KC_HOSTNAME_ADMIN_URL: https://judicialsync.localhost:8443/auth
+      KC_HOSTNAME_STRICT: 'false'
+      KC_HOSTNAME_STRICT_HTTPS: 'false'
+      KC_HEALTH_ENABLED: 'true'
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD must be set — copy .env.example to .env}
+    volumes:
+      - ./infra/keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      # The image has bash but no curl/wget, so bash's /dev/tcp plus a manual
+      # HTTP request is the probe. Port 8080, not 9000: Keycloak 24's separate
+      # management port only exists under `start` (production mode) with
+      # KC_HTTP_MANAGEMENT_PORT configured. Under `start-dev` the health
+      # endpoints are served on the main HTTP listener, and probing 9000 gets
+      # a connection refused forever while the server is perfectly healthy.
+      # The /auth prefix comes from KC_HTTP_RELATIVE_PATH.
+      test:
+        [
+          'CMD-SHELL',
+          'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /auth/health/ready HTTP/1.0\r\n\r\n" >&3 && grep -q "\"status\": \"UP\"" <&3',
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # ClamAV — malware scanning for uploads
+  # ---------------------------------------------------------------------------
+  # FRD/F13: the scan is a HARD GATE — a file that fails is rejected before
+  # storage, and there is no no-op scanner. Tag note: `clamav/clamav:1.4.3`
+  # ships the signature databases BAKED IN; the `_base` variants ship an empty
+  # /var/lib/clamav and require freshclam to reach the network on first boot.
+  # The sandbox may have no outbound network, so the signature-carrying tag is
+  # the correct one. FRESHCLAM_CHECKS=0 then stops it dialling out on a timer.
+  clamav:
+    image: clamav/clamav:1.4.3
+    restart: unless-stopped
+    environment:
+      FRESHCLAM_CHECKS: '0'
+    volumes:
+      - clamavdata:/var/lib/clamav
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 15s
+      timeout: 15s
+      retries: 20
+      # Loading ~110 MB of signatures into memory genuinely takes minutes on a
+      # 2-core sandbox. A shorter start_period marks the service unhealthy
+      # while it is working correctly.
+      start_period: 300s
+
+  # ---------------------------------------------------------------------------
+  # MinIO — S3-compatible object store, encrypted at rest
+  # ---------------------------------------------------------------------------
+  # TechArch/04-security.md §7.5 requires object-store server-side encryption.
+  # MinIO's KES-less SSE-S3 is enabled by supplying a KMS master key below;
+  # plan 01-10 sets ServerSideEncryption on every PutObject and proves it with
+  # HeadObject.
+  #
+  # SERVER-SIDE ONLY. The endpoint must never reach a browser: file bytes move
+  # through the application's own authenticated API routes, never via a
+  # presigned URL handed to the client. No host port is published, which makes
+  # that structural rather than advisory.
+  minio:
+    image: chainguard/minio@sha256:4cf4831a2bbcf13ddca09c1cbcc9faff716dd3c4247e0babc32864b8ee8e0034
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID must be set — copy .env.example to .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY must be set — copy .env.example to .env}
+      # Local stand-in for the dedicated KMS §7.5 requires in production
+      # (AWS KMS GovCloud / Azure Key Vault Government). The application never
+      # handles the raw key — it asks for AES256 and the store does the rest.
+      MINIO_KMS_SECRET_KEY: judicialsync-local-key:${MINIO_KMS_KEY_B64:?MINIO_KMS_KEY_B64 must be set — copy .env.example to .env}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      # Hardened image: bash is present, curl/wget/grep are not — so the probe
+      # is pure bash (/dev/tcp, `read`, `case`) with no external binary.
+      # HTTP/1.1 with an explicit Host header is required: MinIO answers a
+      # bare HTTP/1.0 request with 400 Bad Request, which would mark a healthy
+      # store unhealthy forever.
+      test:
+        [
+          'CMD-SHELL',
+          'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /minio/health/live HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && read -r line <&3 && case "$$line" in *" 200 "*) exit 0 ;; *) exit 1 ;; esac',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Caddy — the single TLS origin
+  # ---------------------------------------------------------------------------
+  proxy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - '8443:8443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    networks:
+      default:
+        aliases:
+          # The alias that makes the issuer URL resolve identically inside the
+          # network and in the browser. Without it the API container cannot
+          # reach `judicialsync.localhost` at all.
+          - judicialsync.localhost
+    healthcheck:
+      # Must use the HOSTNAME, not 127.0.0.1. The site block is bound to
+      # `judicialsync.localhost:8443`, so a request with any other SNI gets a
+      # TLS internal-error alert rather than a certificate — which looks
+      # identical to a broken proxy. The name resolves here via this service's
+      # own network alias.
+      test:
+        [
+          'CMD-SHELL',
+          'wget -q --no-check-certificate -O /dev/null https://judicialsync.localhost:8443/ || exit 1',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Platform Core API
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      opa: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      clamav: { condition: service_healthy }
+      # Only `service_started` — Caddy's internal CA is written within a second
+      # of start, well before this container's entrypoint needs it, and waiting
+      # on `service_healthy` here would deadlock: Caddy's own healthcheck
+      # proxies to `api`.
+      proxy: { condition: service_started }
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+
+      # --- data stores: COMPOSE SERVICE NAMES, never localhost -------------
+      DATABASE_URL: postgresql://app_rw:app_rw_local_dev@db:5432/judicialsync?schema=platform
+      MIGRATION_DATABASE_URL: postgresql://app_dba:app_dba_local_dev@db:5432/judicialsync?schema=platform
+      REDIS_URL: redis://redis:6379
+
+      # --- policy decision point -------------------------------------------
+      OPA_URL: http://opa:8181
+      PDP_TIMEOUT_MS: '2000'
+
+      # --- identity ---------------------------------------------------------
+      # Reached through the proxy alias, so this exact string is also what the
+      # browser uses and what Keycloak advertises as `iss`.
+      OIDC_ISSUER_URL: https://judicialsync.localhost:8443/auth/realms/judicialsync
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-judicialsync-internal}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?OIDC_CLIENT_SECRET must be set — copy .env.example to .env}
+      OIDC_REDIRECT_URI: https://judicialsync.localhost:8443/api/v1/auth/callback
+      PUBLIC_BASE_URL: https://judicialsync.localhost:8443
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      # Internal address for the seed's admin-API lookups. Deliberately NOT the
+      # public issuer: the seed runs before Caddy is necessarily serving, and
+      # it is a server-to-server call that no browser ever sees.
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080/auth
+      KEYCLOAK_REALM: judicialsync
+
+      # --- malware scanning --------------------------------------------------
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: '3310'
+      CLAMAV_TIMEOUT_MS: '30000'
+
+      # --- object storage (server-side only) --------------------------------
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: judicialsync-files
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+
+      # --- transport ---------------------------------------------------------
+      # Trust Caddy's internal CA. This is a trust ANCHOR, not a verification
+      # bypass: NODE_TLS_REJECT_UNAUTHORIZED is never set anywhere in this
+      # repository, and an issuer presenting any other certificate is still
+      # rejected (threat T-01-13).
+      NODE_EXTRA_CA_CERTS: /caddy-ca/root.crt
+      MAX_UPLOAD_BYTES: '52428800'
+
+      # --- audit integrity ---------------------------------------------------
+      AUDIT_INTEGRITY_INTERVAL_MS: '3600000'
+      AUDIT_INTEGRITY_SCHEDULE_ENABLED: 'true'
+    volumes:
+      # Read-only view of Caddy's data volume, purely to read the internal CA.
+      - caddydata:/caddy-ca-src:ro
+    command:
+      - 'sh'
+      - '-c'
+      - |
+        set -e
+
+        # --- trust anchor -------------------------------------------------
+        # Caddy writes its internal root CA here within a second of starting.
+        # Wait briefly rather than racing it.
+        CA_SRC=/caddy-ca-src/caddy/pki/authorities/local/root.crt
+        for i in $$(seq 1 60); do
+          [ -f "$$CA_SRC" ] && break
+          sleep 1
+        done
+        if [ ! -f "$$CA_SRC" ]; then
+          echo "FATAL: Caddy internal CA not found at $$CA_SRC after 60s." >&2
+          echo "Refusing to start: without it the API cannot verify the OIDC" >&2
+          echo "issuer, and the only alternatives are disabling TLS" >&2
+          echo "verification (never) or failing much later with an" >&2
+          echo "inscrutable certificate error." >&2
+          exit 1
+        fi
+        mkdir -p /caddy-ca
+        cp "$$CA_SRC" /caddy-ca/root.crt
+        chown -R node:node /caddy-ca
+        echo "Trusted Caddy internal CA from $$CA_SRC"
+
+        # --- migrate -> seed -> serve, as the right role each time ---------
+        # db:migrate runs as app_dba (DDL rights). The seed and the server run
+        # as app_rw, which holds no DELETE anywhere and no UPDATE on the
+        # append-only tables. Running the seed as app_dba would make it pass
+        # against a grant posture the running application does not have.
+        cd /app
+        su-exec node npm run db:migrate --workspace @judicialsync/api
+        su-exec node npm run db:seed --workspace @judicialsync/api
+        exec su-exec node node apps/api/dist/src/main.js
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/api/v1/health']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  clamavdata:
+  caddydata:
+  caddyconfig:
+
+networks:
+  default:
+    name: judicialsync
