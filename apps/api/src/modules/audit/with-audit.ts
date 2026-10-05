@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ApiException } from '../../common/errors/api-error';
-import { AuditService } from './audit.service';
+import { AuditService, AuditWriteResult } from './audit.service';
 import { AuditWriteInput } from './audit.types';
 
 /** The exact code, status and message from `FRD/F02` Error States. */
@@ -16,6 +16,16 @@ const AUDIT_WRITE_FAILED_MESSAGE =
 export interface AuditedOutcome<T> {
   result: T;
   audit: AuditWriteInput | AuditWriteInput[];
+  /**
+   * Opt out of the "at least one event" requirement.
+   *
+   * Set **only** by {@link recordStandaloneAudit}, which has already appended
+   * its events inside the transaction. Everything else leaves it unset: an
+   * empty event list from a normal caller means a state change is about to
+   * commit with no record of it, which is the precise failure this helper
+   * exists to prevent, and the guard must keep catching it.
+   */
+  allowNoDomainWrite?: boolean;
 }
 
 const logger = new Logger('withAudit');
@@ -119,10 +129,10 @@ export async function withAudit<T>(
   try {
     return await prisma.$transaction(
       async (tx) => {
-        const { result, audit: events } = await fn(tx);
+        const { result, audit: events, allowNoDomainWrite } = await fn(tx);
 
         const list = Array.isArray(events) ? events : [events];
-        if (list.length === 0) {
+        if (list.length === 0 && allowNoDomainWrite !== true) {
           // An audited operation that emits nothing is a silently unaudited
           // operation — the exact outcome this helper exists to prevent. Fail
           // loudly rather than commit a change with no record of it.
@@ -177,4 +187,59 @@ export async function withAudit<T>(
     // clerk chasing an integrity incident over a typo.
     throw error;
   }
+}
+
+/**
+ * Append audit events that accompany **no domain write of their own**.
+ *
+ * Two legitimate callers, and the list is meant to stay short:
+ *
+ *   - `POST /api/v1/audit/events`, where another service already performed
+ *     the domain work in its own database and is reporting it here; and
+ *   - `access_attempt` events (plan 01-07's ABAC guard), which record a
+ *     request that was *refused* — by definition there is no state change to
+ *     pair with.
+ *
+ * It is a thin wrapper over {@link withAudit} rather than a second
+ * implementation, so the transaction settings, the `AUDIT_WRITE_FAILED`
+ * translation and the single-code-path property are shared rather than
+ * duplicated. The write is still transactional, because
+ * {@link AuditService.record} requires a transaction and because the chain
+ * head must be locked while the hash is computed.
+ *
+ * **Not a general-purpose shortcut.** If your operation changes state, use
+ * {@link withAudit} and put the domain write in the callback — that is the
+ * whole guarantee. Reaching for this function to "audit afterwards" recreates
+ * exactly the non-atomic pattern `FRD/F02` forbids.
+ */
+export async function recordStandaloneAudit(
+  prisma: PrismaService,
+  audit: AuditService,
+  events: AuditWriteInput | AuditWriteInput[],
+): Promise<AuditWriteResult[]> {
+  const list = Array.isArray(events) ? events : [events];
+  if (list.length === 0) {
+    throw new Error('recordStandaloneAudit() requires at least one event.');
+  }
+
+  // The results are captured from inside the transaction rather than re-read
+  // afterwards: a caller needs the receipt (id + row_hash) for each event, and
+  // querying the chain head after commit would return another writer's tip
+  // under concurrency.
+  const written: AuditWriteResult[] = [];
+
+  await withAudit(prisma, audit, async (tx) => {
+    for (const event of list) {
+      written.push(await audit.record(tx, event));
+    }
+    // Already appended above, inside this transaction. `withAudit` is used for
+    // its transaction settings and its AUDIT_WRITE_FAILED translation, so the
+    // event list it is handed is empty by design — but its empty-list guard
+    // exists to catch an unaudited state change, and there is no state change
+    // here at all. `allowNoDomainWrite` makes that distinction explicit rather
+    // than letting this path quietly look like the mistake the guard catches.
+    return { result: undefined, audit: [], allowNoDomainWrite: true };
+  });
+
+  return written;
 }

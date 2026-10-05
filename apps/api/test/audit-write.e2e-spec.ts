@@ -1,6 +1,12 @@
+import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import { Client } from 'pg';
 import { PrismaClient } from '@prisma/client';
+import request from 'supertest';
 
+import { AppModule } from '../src/app.module';
+import { ApiExceptionFilter } from '../src/common/errors/api-exception.filter';
+import { PrismaModule } from '../src/common/prisma/prisma.module';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { AUDIT_GENESIS_HASH, AuditWriteInput } from '../src/modules/audit/audit.types';
 import {
@@ -365,6 +371,270 @@ describe('audit-write: append-only hash-chained capture (e2e)', () => {
       ).rejects.toThrow(/Pass the value as a string/);
 
       expect(await allEvents()).toHaveLength(0);
+    });
+  });
+
+  /**
+   * ==========================================================================
+   * POST /api/v1/audit/events — the service-to-service boundary
+   * ==========================================================================
+   *
+   * `FRD/Y1a-api-shared.md` §Audit: "(internal service-to-service only) … Not
+   * user-invokable." `US-2.3` makes it an acceptance criterion.
+   *
+   * Driven over HTTP through the real Nest pipeline — the global prefix, the
+   * global guard chain, the exception filter — rather than by calling the
+   * controller method. A guard is a property of the request pipeline, and a
+   * unit test that invokes the handler directly proves nothing about whether
+   * the guard runs. These assertions are about what an attacker reaches.
+   */
+  describe('POST /api/v1/audit/events is service-to-service only', () => {
+    const VALID_TOKEN = 'test-internal-service-token-value';
+    let app: INestApplication;
+    let originalToken: string | undefined;
+    let originalDatabaseUrl: string | undefined;
+
+    /**
+     * Build the app with `INTERNAL_SERVICE_TOKEN` set to `token`, or unset it
+     * entirely when `token` is undefined — which is the fail-closed case.
+     */
+    async function createApp(token: string | undefined): Promise<INestApplication> {
+      if (token === undefined) {
+        delete process.env.INTERNAL_SERVICE_TOKEN;
+      } else {
+        process.env.INTERNAL_SERVICE_TOKEN = token;
+      }
+
+      const moduleRef = await Test.createTestingModule({
+        imports: [AppModule, PrismaModule],
+      }).compile();
+
+      const created = moduleRef.createNestApplication();
+      // Mirror main.ts: without the prefix and the filter this would test a
+      // pipeline nobody deploys.
+      created.setGlobalPrefix('api/v1');
+      created.useGlobalFilters(new ApiExceptionFilter());
+      await created.init();
+      return created;
+    }
+
+    beforeAll(async () => {
+      originalToken = process.env.INTERNAL_SERVICE_TOKEN;
+      originalDatabaseUrl = process.env.DATABASE_URL;
+      process.env.DATABASE_URL = db.appRwUrl;
+      app = await createApp(VALID_TOKEN);
+    });
+
+    afterAll(async () => {
+      await app?.close();
+      if (originalToken === undefined) {
+        delete process.env.INTERNAL_SERVICE_TOKEN;
+      } else {
+        process.env.INTERNAL_SERVICE_TOKEN = originalToken;
+      }
+      if (originalDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = originalDatabaseUrl;
+      }
+    });
+
+    /** A valid body — note it carries no `actor_id`, by design. */
+    function body(): Record<string, unknown> {
+      return {
+        action_type: 'config_change',
+        object_type: 'courts',
+        object_id: objectId,
+        after_state: { court_code: 'AWC' },
+      };
+    }
+
+    it('accepts a call with a valid service token and actor header (201)', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', VALID_TOKEN)
+        .set('x-service-actor-id', actorId)
+        .send(body())
+        .expect(201);
+
+      expect(response.body.row_hash).toMatch(/^[0-9a-f]{64}$/);
+
+      // The receipt must describe a row that actually exists.
+      const events = await allEvents();
+      expect(events).toHaveLength(1);
+      expect(events[0].id).toBe(response.body.id);
+      expect(events[0].row_hash).toBe(response.body.row_hash);
+      expect(events[0].actor_id).toBe(actorId);
+      expect(events[0].prev_hash).toBe(AUDIT_GENESIS_HASH);
+    });
+
+    it('denies a call with no service token (403 AUDIT_WRITE_DENIED)', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-actor-id', actorId)
+        .send(body())
+        .expect(403);
+
+      expect(response.body.error_code).toBe('AUDIT_WRITE_DENIED');
+      expect(response.body.message).toBe(
+        'This endpoint is not callable by end-user clients',
+      );
+      expect(await allEvents()).toHaveLength(0);
+    });
+
+    it('denies a call with the wrong service token (403)', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', 'not-the-token')
+        .set('x-service-actor-id', actorId)
+        .send(body())
+        .expect(403);
+
+      expect(response.body.error_code).toBe('AUDIT_WRITE_DENIED');
+      expect(await allEvents()).toHaveLength(0);
+    });
+
+    it('denies a token of the right length but wrong content (403)', async () => {
+      // Guards against a comparison that only checks length — which is what a
+      // careless constant-time implementation degrades into.
+      const sameLengthWrong = 'X'.repeat(VALID_TOKEN.length);
+      await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', sameLengthWrong)
+        .set('x-service-actor-id', actorId)
+        .send(body())
+        .expect(403);
+
+      expect(await allEvents()).toHaveLength(0);
+    });
+
+    it('denies a request carrying an end-user Authorization header alongside a valid service token (403)', async () => {
+      // Threat T-01-16. The service token alone WOULD have been sufficient;
+      // the combination is refused so a user credential can never be laundered
+      // into a service call by a proxy that forwards client headers.
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', VALID_TOKEN)
+        .set('x-service-actor-id', actorId)
+        .set('authorization', 'Bearer some-end-user-session-token')
+        .send(body())
+        .expect(403);
+
+      expect(response.body.error_code).toBe('AUDIT_WRITE_DENIED');
+      expect(await allEvents()).toHaveLength(0);
+    });
+
+    it('rejects a body containing actor_id (422), naming the reason', async () => {
+      // Threat T-01-15 — the forged-attribution case. The request is refused
+      // rather than silently having its actor_id ignored: a caller that sent
+      // one believed it was setting the actor, and recording a different one
+      // produces an entry that is confidently wrong about who acted.
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', VALID_TOKEN)
+        .set('x-service-actor-id', actorId)
+        .send({ ...body(), actor_id: '99999999-9999-4999-8999-999999999999' })
+        .expect(422);
+
+      expect(response.body.error_code).toBe('REQUEST_VALIDATION_FAILED');
+      expect(response.body.message).toMatch(/actor_id may not be supplied/);
+      expect(await allEvents()).toHaveLength(0);
+    });
+
+    it('rejects a missing or malformed x-service-actor-id (422)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', VALID_TOKEN)
+        .send(body())
+        .expect(422);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', VALID_TOKEN)
+        .set('x-service-actor-id', 'not-a-uuid')
+        .send(body())
+        .expect(422);
+
+      expect(await allEvents()).toHaveLength(0);
+    });
+
+    it('rejects an actor that does not exist, as 422 rather than 500', async () => {
+      // The FK would catch it anyway, but only as AUDIT_WRITE_FAILED — an
+      // integrity-flavoured 500 for what is a plain bad request. Keeping the
+      // distinction means AUDIT_WRITE_FAILED still means what FRD/F02 says.
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', VALID_TOKEN)
+        .set('x-service-actor-id', '99999999-9999-4999-8999-999999999999')
+        .send(body())
+        .expect(422);
+
+      expect(response.body.error_code).toBe('REQUEST_VALIDATION_FAILED');
+      expect(await allEvents()).toHaveLength(0);
+    });
+
+    it('rejects an unknown action_type and an unknown body key (422)', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', VALID_TOKEN)
+        .set('x-service-actor-id', actorId)
+        .send({ ...body(), action_type: 'not_a_real_action' })
+        .expect(422);
+
+      // `.strict()` — an unrecognised key is what would otherwise let a
+      // future renamed field slip past the actor_id check.
+      await request(app.getHttpServer())
+        .post('/api/v1/audit/events')
+        .set('x-service-token', VALID_TOKEN)
+        .set('x-service-actor-id', actorId)
+        .send({ ...body(), smuggled: 'value' })
+        .expect(422);
+
+      expect(await allEvents()).toHaveLength(0);
+    });
+
+    describe('with INTERNAL_SERVICE_TOKEN unset', () => {
+      let failClosedApp: INestApplication;
+
+      beforeAll(async () => {
+        failClosedApp = await createApp(undefined);
+      });
+
+      afterAll(async () => {
+        await failClosedApp?.close();
+        process.env.INTERNAL_SERVICE_TOKEN = VALID_TOKEN;
+      });
+
+      /**
+       * The most important case in this file.
+       *
+       * The tempting reading of "no secret configured" is "no check to
+       * perform". That turns a deployment mistake — an env var missing from a
+       * Compose file, a secret that failed to mount — into a world-writable
+       * audit log, and nothing about the running system would look wrong.
+       * FRD/Y2-errors.md principle 1: fail closed, not open.
+       */
+      it('denies every call, including one with no token at all (403)', async () => {
+        const response = await request(failClosedApp.getHttpServer())
+          .post('/api/v1/audit/events')
+          .set('x-service-actor-id', actorId)
+          .send(body())
+          .expect(403);
+
+        expect(response.body.error_code).toBe('AUDIT_WRITE_DENIED');
+        expect(await allEvents()).toHaveLength(0);
+      });
+
+      it('denies a call presenting an empty token, which must not match the unset secret', async () => {
+        await request(failClosedApp.getHttpServer())
+          .post('/api/v1/audit/events')
+          .set('x-service-token', '')
+          .set('x-service-actor-id', actorId)
+          .send(body())
+          .expect(403);
+
+        expect(await allEvents()).toHaveLength(0);
+      });
     });
   });
 });
