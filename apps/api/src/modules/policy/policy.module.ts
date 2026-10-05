@@ -3,6 +3,7 @@ import { Global, Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
 import { PdpClient } from './pdp.client';
+import { PolicyEvaluateController } from './policy-evaluate.controller';
 import { ResourceLoaderService } from './resource-loader.service';
 
 /**
@@ -41,6 +42,7 @@ import { ResourceLoaderService } from './resource-loader.service';
 @Global()
 @Module({
   imports: [PrismaModule, AuditModule],
+  controllers: [PolicyEvaluateController],
   providers: [PdpClient, ResourceLoaderService],
   exports: [PdpClient, ResourceLoaderService],
 })

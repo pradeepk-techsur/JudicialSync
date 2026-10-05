@@ -65,3 +65,57 @@ have to carry the same workaround.
 principal — including the Phase 4 external attorney, whose confinement to two
 named cases is the entire point of `attorney_external` — reach every case in
 their court.
+
+---
+
+## DEF-02 (found in 01-07): `INTERNAL_SERVICE_TOKEN` is not passed to the `api` container
+
+**Status:** open — affects both internal service routes in the Compose stack.
+
+**What happens.** Against the running stack, with the correct token from
+`.env`:
+
+```
+POST /api/v1/audit/events            -> 403 AUDIT_WRITE_DENIED
+POST /api/v1/security/policy-evaluate -> 403 AUDIT_WRITE_DENIED
+docker compose exec api sh -c 'echo $INTERNAL_SERVICE_TOKEN'  -> (empty)
+```
+
+**Why.** `docker-compose.yml`'s `api` service lists every other secret it needs
+(`OIDC_CLIENT_SECRET`, `KEYCLOAK_ADMIN_PASSWORD`, `S3_*`) but not
+`INTERNAL_SERVICE_TOKEN`. `.env` declares it and `.env.example` documents it as
+`[SECRET]`; the Compose service simply never forwards it. `ServiceTokenGuard`
+fails closed on an unconfigured secret — deliberately, and with a loud
+error-level log, because plan 01-05 reasoned that "no secret" must never mean
+"no check" — so both routes deny every caller.
+
+**Pre-existing, not introduced by 01-07.** `POST /audit/events` shipped in plan
+01-05 and is affected identically; `/security/policy-evaluate` merely reuses the
+same guard and so inherits it. Verified by calling both against the stack.
+
+**Why nothing caught it.** 01-05's suite boots the app in-process with
+`INTERNAL_SERVICE_TOKEN` set in the test environment, which is the right way to
+test the guard's logic and cannot observe what Compose forwards. 01-07's
+fail-closed suite does the same. Nothing in the phase exercises an internal
+route through the deployed container, so the gap lives exactly in the space
+between the two.
+
+**Consequence.** Both internal service-to-service routes are unreachable in the
+Compose deployment. No Phase 1 user-facing behaviour is affected — nothing calls
+them yet — but any Phase 2+ service integration would hit a 403 whose cause is
+several layers from the symptom.
+
+**Recommended fix (NOT taken here — `docker-compose.yml` is plan 01-04's file).**
+One line in the `api` service's `environment:` block, following the pattern the
+other secrets already use:
+
+```yaml
+INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN must be set — copy .env.example to .env}
+```
+
+The `:?` form matches how that file already treats every other required secret
+and turns a missing value into a refusal to start rather than a stack that boots
+with two silently dead endpoints. Plan **01-14** (assurance) is the natural
+owner, and the durable fix is a test that calls an internal route through the
+deployed container rather than in-process — the gap is a *coverage* gap as much
+as a configuration one.
