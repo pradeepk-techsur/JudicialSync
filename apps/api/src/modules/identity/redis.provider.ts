@@ -35,11 +35,33 @@ export const redisProvider: Provider = {
     }
 
     const client = new Redis(url, {
-      // Fail a command rather than queue it forever when the server is down:
-      // an authentication request should produce a prompt 503, not hang
-      // until the client's socket times out.
+      // Bound the retries so an authentication request against a dead Redis
+      // produces a prompt failure rather than hanging until the socket
+      // times out.
       maxRetriesPerRequest: 2,
-      enableOfflineQueue: false,
+
+      // `enableOfflineQueue` stays TRUE, deliberately, and this is a
+      // correctness fix rather than a tuning preference.
+      //
+      // With it false, ioredis rejects any command issued before the
+      // connection reaches `ready` — including commands issued microseconds
+      // after construction, while the TCP handshake is still in flight. The
+      // observable effect is that the FIRST login attempt after every boot
+      // fails: `beginAuthorization` cannot persist its state/nonce, so the
+      // callback finds nothing and the user is told their assertion was
+      // invalid. It then works forever after, which makes it the kind of
+      // bug that is dismissed as a flake and never fixed.
+      //
+      // Found exactly that way — the first real end-to-end login in the
+      // integration suite failed with AUTH_INVALID_ASSERTION while Redis was
+      // provably healthy.
+      //
+      // Queuing does not weaken the fail-closed posture: the queue is
+      // bounded by `maxRetriesPerRequest`, so a genuinely unreachable Redis
+      // still fails the command, and `OidcProvider.requireRedis` still
+      // denies rather than proceeding without replay protection.
+      enableOfflineQueue: true,
+
       lazyConnect: false,
     });
 

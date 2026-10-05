@@ -110,9 +110,49 @@ browser flow's LoA-conditioned OTP step, so the session is never stepped up to
 level 2. `"1"` resolves to 1, which is below the threshold, and is correctly
 **not** MFA-satisfied. An "any `acr` will do" check would accept it.
 
-An ACR alias that appears in **neither** the configured map nor
-`acr_values_supported` resolves to nothing and therefore denies. A realm
-misconfiguration must not silently downgrade MFA for everyone.
+### The `acr.loa.map` is not published in discovery
+
+A second trap, found the same way. The realm defines `acr.loa.map` as
+`{"otp": 2}`, but **that mapping does not appear in the discovery document**.
+What discovery publishes is:
+
+```json
+"acr_values_supported": ["otp", "0", "2"]
+```
+
+— the aliases and the levels, with nothing connecting them. A relying party
+that reads only discovery therefore gets the alias `otp` and no way to score
+it, and a deployment that supplies no explicit `OIDC_ACR_LOA_MAP` would reject
+every genuine MFA login.
+
+So resolution has a final step: an alias that scores to no level, but which
+**names a recognised second-factor method** (RFC 8176 — `otp`, `mfa`, `hwk`,
+`swk`, `sms`, `pop`), is treated as evidence of that method. This is reading
+the claim for what it says rather than loosening the check — `acr: "otp"`
+asserts a one-time password was used, which is the same thing `amr: ["otp"]`
+asserts, in the field this provider happens to populate.
+
+The scope is deliberately narrow. Numeric values were already scored, so
+`"0"` and `"1"` never reach this step. A vendor alias like `"gold"` or
+`"silver"` resolves to nothing, names no known method, and still denies —
+because an unrecognised alias is not evidence of anything. An ACR value that
+appears in neither the configured map nor `acr_values_supported`, and names
+no known second factor, denies. A realm misconfiguration must not silently
+downgrade MFA for everyone.
+
+### RFC 9207: forward the `iss` callback parameter
+
+Keycloak advertises `authorization_response_iss_parameter_supported: true`,
+so it returns an `iss` query parameter on the redirect. A certified OIDC
+client **must** validate it — it is the mitigation for mix-up attacks, where
+a malicious authorization server tricks a client into redeeming a code at the
+wrong issuer.
+
+The practical consequence: the callback handler has to forward **all** the
+redirect's query parameters to the token exchange, not just `code` and
+`state`. Passing only those two makes `openid-client` reject every exchange
+with `iss missing from the response` — a 401 that looks exactly like a bad
+credential and is nothing of the kind.
 
 ### Configuring a new IdP
 

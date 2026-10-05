@@ -9,6 +9,7 @@ import { ApiException } from '../src/common/errors/api-error';
 import { ApiExceptionFilter } from '../src/common/errors/api-exception.filter';
 import { AbacGuard } from '../src/common/guards/abac.guard';
 import { SessionAuthGuard } from '../src/common/guards/session-auth.guard';
+import { SessionService } from '../src/modules/identity/session.service';
 
 /**
  * **Proof that deny-by-default holds.**
@@ -61,6 +62,32 @@ describe('Global guards fail closed (e2e)', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       controllers: [GuardProbeController],
       providers: [
+        // `SessionAuthGuard` gained a `SessionService` dependency in plan
+        // 01-06, when its deny-all stub became real session validation.
+        //
+        // The stand-in below rejects every token, which is exactly what this
+        // suite needs: the subject here is the GUARD CHAIN's shape — public
+        // allowed, everything else denied, denial bodies leaking nothing —
+        // not the validation logic, which `auth-session.e2e-spec.ts` drives
+        // against a real database and a real Keycloak.
+        //
+        // Deliberately a rejecting double rather than a permissive one. A
+        // double that returned a principal would make every assertion below
+        // pass for the wrong reason, and this file's entire purpose is to
+        // fail loudly if the chain ever stops denying.
+        {
+          provide: SessionService,
+          useValue: {
+            validate: (): Promise<never> =>
+              Promise.reject(
+                new ApiException(
+                  401,
+                  'AUTH_SESSION_EXPIRED',
+                  'Session expired; please sign in again',
+                ),
+              ),
+          },
+        },
         // Registered exactly as app.module.ts registers them, in the same
         // order, so this test exercises the real chain rather than a
         // convenient approximation of it.

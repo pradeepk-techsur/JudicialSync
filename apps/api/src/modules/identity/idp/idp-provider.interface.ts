@@ -143,15 +143,23 @@ export interface IdpProvider {
   exchange(
     assertion: string,
     verifier: AuthorizationVerifier,
+    callbackParams?: Record<string, string>,
   ): Promise<IdpAssertionResult>;
 
   /**
    * The whole callback leg: consume the verifier for `state`, then
    * {@link exchange}. The path an HTTP caller should use, because it cannot be
    * written in a way that skips the replay check.
+   *
+   * `callbackParams` carries any additional query parameters the IdP
+   * returned on the redirect. They are not decoration: a provider that
+   * advertises `authorization_response_iss_parameter_supported` (Keycloak
+   * does) returns an `iss` parameter that the relying party MUST validate
+   * per RFC 9207, and dropping it makes every exchange fail.
    */
   completeAuthorization(
     assertion: string,
     state: string,
+    callbackParams?: Record<string, string>,
   ): Promise<IdpAssertionResult>;
 }

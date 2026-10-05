@@ -360,6 +360,7 @@ export class OidcProvider implements IdpProvider, OnModuleInit {
   async completeAuthorization(
     assertion: string,
     state: string,
+    callbackParams: Record<string, string> = {},
   ): Promise<IdpAssertionResult> {
     const verifier = await this.consumeVerifier(state);
     if (verifier === undefined) {
@@ -373,12 +374,13 @@ export class OidcProvider implements IdpProvider, OnModuleInit {
         AUTH_INVALID_ASSERTION_MESSAGE,
       );
     }
-    return this.exchange(assertion, verifier);
+    return this.exchange(assertion, verifier, callbackParams);
   }
 
   async exchange(
     assertion: string,
     verifier: AuthorizationVerifier,
+    callbackParams: Record<string, string> = {},
   ): Promise<IdpAssertionResult> {
     const client = this.requireClient();
 
@@ -390,9 +392,24 @@ export class OidcProvider implements IdpProvider, OnModuleInit {
       // than hand-rolling the checks is the point of using a certified RP
       // library — a hand-rolled validator is where audience confusion and
       // `alg: none` bugs live.
+      // `callbackParams` is spread in FIRST so the code and state below are
+      // authoritative — a caller cannot override them with query values.
+      //
+      // Forwarding the rest is required, not optional. Keycloak advertises
+      // `authorization_response_iss_parameter_supported`, so it returns an
+      // `iss` parameter on the redirect which openid-client MUST validate
+      // per RFC 9207 (it is the mitigation for mix-up attacks, where a
+      // malicious authorization server tricks a client into redeeming a code
+      // at the wrong issuer). Passing only `{code, state}` makes the library
+      // reject every exchange with "iss missing from the response" — a 401
+      // that looks exactly like a bad credential and is nothing of the kind.
       const tokenSet = await client.callback(
         this.config.redirectUri,
-        { code: assertion, state: verifier.state },
+        {
+          ...callbackParams,
+          code: assertion,
+          state: verifier.state,
+        },
         { state: verifier.state, nonce: verifier.nonce, code_verifier: verifier.codeVerifier },
       );
       claims = tokenSet.claims();
@@ -503,9 +520,33 @@ export class OidcProvider implements IdpProvider, OnModuleInit {
     }
 
     if (acr === undefined || acr.trim() === '') return false;
+    const value = acr.trim();
 
-    const level = this.resolveAcrLevel(acr.trim());
-    return level !== undefined && level >= MFA_MINIMUM_LOA;
+    const level = this.resolveAcrLevel(value);
+    if (level !== undefined) return level >= MFA_MINIMUM_LOA;
+
+    // The alias resolved to no numeric level. Before denying, check whether
+    // the alias IS the name of a second-factor method.
+    //
+    // This is not a loosening — it is reading the claim for what it says.
+    // `acr` is the authentication *context class*, and a value of exactly
+    // `"otp"` states that a one-time password was used. That is the same
+    // assertion `amr: ["otp"]` makes, in the field this IdP happens to use.
+    //
+    // It is needed because the realm's `acr.loa.map` of `{"otp": 2}` is NOT
+    // published in discovery metadata — `acr_values_supported` lists
+    // `["otp", "0", "2"]`, the aliases and levels with nothing connecting
+    // them. So an out-of-the-box Keycloak gives a relying party the alias
+    // and no way to score it, and a deployment that supplies no explicit
+    // OIDC_ACR_LOA_MAP would reject every genuine MFA login.
+    //
+    // Scope is deliberately narrow: only values that name a recognised
+    // second factor (RFC 8176). `"1"` and `"0"` are numeric and were already
+    // scored above; a vendor alias like `"gold"` still resolves to nothing
+    // and still denies, because an unrecognised alias is not evidence of
+    // anything. `OIDC_ACR_LOA_MAP` overrides all of this when a court's IdP
+    // needs different semantics — see docs/IDP-INTEGRATION.md §3.
+    return MFA_AMR_METHODS.has(value.toLowerCase());
   }
 
   /**
