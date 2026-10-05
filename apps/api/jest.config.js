@@ -15,10 +15,9 @@ module.exports = {
   transform: {
     '^.+\\.ts$': [
       'ts-jest',
-      {
-        tsconfig: '<rootDir>/tsconfig.json',
-        isolatedModules: true,
-      },
+      // `isolatedModules` is set in tsconfig.json, not here: the ts-jest
+      // option of that name is deprecated and removed in ts-jest v30.
+      { tsconfig: '<rootDir>/tsconfig.json' },
     ],
   },
   collectCoverageFrom: ['src/**/*.ts', '!src/main.ts'],

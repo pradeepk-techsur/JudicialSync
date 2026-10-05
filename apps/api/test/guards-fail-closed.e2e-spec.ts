@@ -1,0 +1,236 @@
+import { Controller, ExecutionContext, Get, INestApplication } from '@nestjs/common';
+import { APP_GUARD, Reflector } from '@nestjs/core';
+import { Test, TestingModule } from '@nestjs/testing';
+import request from 'supertest';
+
+import { Public } from '../src/common/decorators/public.decorator';
+import { SelfScoped } from '../src/common/decorators/self-scoped.decorator';
+import { ApiException } from '../src/common/errors/api-error';
+import { ApiExceptionFilter } from '../src/common/errors/api-exception.filter';
+import { AbacGuard } from '../src/common/guards/abac.guard';
+import { SessionAuthGuard } from '../src/common/guards/session-auth.guard';
+
+/**
+ * **Proof that deny-by-default holds.**
+ *
+ * The Phase 1 CONTEXT rejected per-route opt-in guards because "a route that
+ * forgets the decorator is silently open, which is precisely the failure mode
+ * F00 forbids." This file is the evidence for that claim, and it is written
+ * to fail loudly if a future change makes either guard permissive.
+ *
+ * The throwaway controller below is the point: it is an *unaudited* route of
+ * the kind a later plan might add. Nobody wired it into the application, it
+ * carries no security review, and it must still be denied.
+ *
+ * Mitigates threats T-01-01 (elevation of privilege via a forgotten
+ * decorator) and T-01-02 (information disclosure through the error channel).
+ */
+@Controller('guard-probe')
+class GuardProbeController {
+  /** Exempt from the session requirement entirely — the `/health` case. */
+  @Public()
+  @Get('public')
+  publicRoute(): { reached: true } {
+    return { reached: true };
+  }
+
+  /**
+   * Session required, resource ABAC skipped — the `/auth/entitlements` case.
+   * Still denied in this plan, because `SessionAuthGuard` is itself a
+   * deny-by-default stub until plan 01-06.
+   */
+  @SelfScoped()
+  @Get('self-scoped')
+  selfScopedRoute(): { reached: true } {
+    return { reached: true };
+  }
+
+  /**
+   * Carries no marking at all. This is the route that must never return 200.
+   */
+  @Get('unmarked')
+  unmarkedRoute(): { reached: true } {
+    return { reached: true };
+  }
+}
+
+describe('Global guards fail closed (e2e)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleRef: TestingModule = await Test.createTestingModule({
+      controllers: [GuardProbeController],
+      providers: [
+        // Registered exactly as app.module.ts registers them, in the same
+        // order, so this test exercises the real chain rather than a
+        // convenient approximation of it.
+        { provide: APP_GUARD, useClass: SessionAuthGuard },
+        { provide: APP_GUARD, useClass: AbacGuard },
+      ],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    app.useGlobalFilters(new ApiExceptionFilter());
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  describe('@Public() routes', () => {
+    it('reaches the handler', async () => {
+      const response = await request(app.getHttpServer()).get(
+        '/api/v1/guard-probe/public',
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ reached: true });
+    });
+  });
+
+  describe('unmarked routes', () => {
+    it('is denied 401 AUTH_SESSION_EXPIRED before the handler runs', async () => {
+      const response = await request(app.getHttpServer()).get(
+        '/api/v1/guard-probe/unmarked',
+      );
+
+      // SessionAuthGuard denies first: no session, so authorization is never
+      // even reached. The handler's `{reached: true}` must not appear.
+      expect(response.status).toBe(401);
+      expect(response.body).toMatchObject({
+        error_code: 'AUTH_SESSION_EXPIRED',
+        message: 'Session expired; please sign in again',
+      });
+      expect(response.body).not.toHaveProperty('reached');
+    });
+
+    it('can never return 200', async () => {
+      const response = await request(app.getHttpServer()).get(
+        '/api/v1/guard-probe/unmarked',
+      );
+
+      expect(response.status).not.toBe(200);
+    });
+  });
+
+  describe('@SelfScoped() routes', () => {
+    it('still requires a session (SelfScoped exempts ABAC, not authentication)', async () => {
+      const response = await request(app.getHttpServer()).get(
+        '/api/v1/guard-probe/self-scoped',
+      );
+
+      // If this ever returns 200, @SelfScoped() has become an authentication
+      // bypass — which is exactly what its doc comment forbids.
+      expect(response.status).toBe(401);
+      expect(response.body.error_code).toBe('AUTH_SESSION_EXPIRED');
+    });
+  });
+
+  describe('denial bodies leak nothing (FRD Y2 principle 4)', () => {
+    const paths = [
+      '/api/v1/guard-probe/unmarked',
+      '/api/v1/guard-probe/self-scoped',
+    ];
+
+    it.each(paths)('%s carries no stack trace or exception text', async (path) => {
+      const response = await request(app.getHttpServer()).get(path);
+      const serialized = JSON.stringify(response.body);
+
+      expect(response.body).not.toHaveProperty('stack');
+      expect(serialized).not.toContain('Error:');
+      expect(serialized).not.toContain('at ');
+
+      // The envelope carries exactly the FRD Y2 shape and nothing beyond it.
+      expect(Object.keys(response.body).sort()).toEqual(['error_code', 'message']);
+    });
+  });
+
+  /**
+   * The e2e cases above prove the CHAIN denies, but they all stop at the
+   * first guard. That leaves the second guard's own default untested — and a
+   * later plan will replace SessionAuthGuard with a real implementation that
+   * lets authenticated callers through, at which point AbacGuard becomes the
+   * only thing standing between a principal and an unmarked resource route.
+   *
+   * So invoke it directly with a mocked, already-authenticated context.
+   */
+  describe('AbacGuard in isolation (second guard is independently closed)', () => {
+    const buildContext = (
+      handler: (...args: unknown[]) => unknown,
+      controllerClass: new () => unknown,
+    ): ExecutionContext =>
+      ({
+        getHandler: () => handler,
+        getClass: () => controllerClass,
+        switchToHttp: () => ({
+          getRequest: () => ({
+            // An authenticated principal, as plan 01-06 will supply.
+            principal: {
+              user_id: '00000000-0000-4000-8000-000000000001',
+              session_id: '00000000-0000-4000-8000-000000000002',
+              mfa_satisfied: true,
+              roles: [{ role_name: 'judge' as const }],
+              scopes: [],
+              entitlements: [],
+            },
+          }),
+          getResponse: () => ({}),
+        }),
+      }) as unknown as ExecutionContext;
+
+    let guard: AbacGuard;
+
+    beforeAll(() => {
+      guard = new AbacGuard(new Reflector());
+    });
+
+    it('denies an unmarked route with 503 SECURITY_POLICY_UNAVAILABLE', async () => {
+      const context = buildContext(
+        GuardProbeController.prototype.unmarkedRoute,
+        GuardProbeController,
+      );
+
+      await expect(guard.canActivate(context)).rejects.toThrow(ApiException);
+
+      await guard.canActivate(context).catch((error: ApiException) => {
+        expect(error.getStatus()).toBe(503);
+        expect(error.errorCode).toBe('SECURITY_POLICY_UNAVAILABLE');
+        expect(error.toBody()).toEqual({
+          error_code: 'SECURITY_POLICY_UNAVAILABLE',
+          message: 'Access cannot be evaluated at this time; request denied',
+        });
+      });
+    });
+
+    it('denies even a fully MFA-satisfied principal — authentication is not authorization', async () => {
+      const context = buildContext(
+        GuardProbeController.prototype.unmarkedRoute,
+        GuardProbeController,
+      );
+
+      await expect(guard.canActivate(context)).rejects.toMatchObject({
+        errorCode: 'SECURITY_POLICY_UNAVAILABLE',
+      });
+    });
+
+    it('allows a @Public() route', async () => {
+      const context = buildContext(
+        GuardProbeController.prototype.publicRoute,
+        GuardProbeController,
+      );
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+    });
+
+    it('allows a @SelfScoped() route (no target resource to evaluate)', async () => {
+      const context = buildContext(
+        GuardProbeController.prototype.selfScopedRoute,
+        GuardProbeController,
+      );
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+    });
+  });
+});

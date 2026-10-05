@@ -28,7 +28,10 @@
  */
 import { Module } from '@nestjs/common';
 import { ConfigModule as NestConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 
+import { AbacGuard } from './common/guards/abac.guard';
+import { SessionAuthGuard } from './common/guards/session-auth.guard';
 import { AuditModule } from './modules/audit/audit.module';
 import { CaseContextModule } from './modules/case-context/case-context.module';
 import { AppConfigModule } from './modules/config/config.module';
@@ -56,6 +59,27 @@ import { RetentionModule } from './modules/retention/retention.module';
     FilesModule, //           File/Malware Scanning Service             (F13)
     AppConfigModule, //       Configuration read path                   (F13/F03)
     RetentionModule, //       Retention & Disposition Engine            (F13)
+  ],
+  providers: [
+    // ---- The global guard chain. Order is significant. ----
+    //
+    // Nest applies APP_GUARD providers in registration order, so:
+    //
+    //   1. SessionAuthGuard asks "is there a valid, MFA-satisfied session?"
+    //      and answers 401 AUTH_SESSION_EXPIRED if not.
+    //   2. AbacGuard then asks "may this principal touch this resource?"
+    //      and answers 503 SECURITY_POLICY_UNAVAILABLE while the PDP is
+    //      unavailable — fail closed, never fail open.
+    //
+    // Authentication must precede authorization: evaluating resource
+    // attributes against an unknown principal is meaningless, and emitting an
+    // authorization error to an anonymous caller leaks which routes exist.
+    //
+    // Both are registered GLOBALLY and deny by default. A route added by any
+    // later plan is covered the moment it is written; there is no per-route
+    // opt-in to forget. See the header comment and threat T-01-01.
+    { provide: APP_GUARD, useClass: SessionAuthGuard },
+    { provide: APP_GUARD, useClass: AbacGuard },
   ],
 })
 export class AppModule {}
