@@ -1,0 +1,614 @@
+// =============================================================================
+// JudicialSync — Prisma schema for the `platform` database schema
+// =============================================================================
+//
+// This file is the TypeScript-side mirror of the hand-authored SQL migrations in
+// `prisma/migrations/`. The SQL is authoritative, not this file.
+//
+// That direction matters. `TechArch/05-tech-stack.md` §8.2 names the raw-SQL
+// escape hatch for exactly the two things Prisma cannot express and that this
+// phase depends on absolutely: the database GRANT posture that makes the audit
+// trail immutable, and the BEFORE INSERT trigger that makes it tamper-evident.
+// Neither survives a `prisma migrate dev` regeneration, so migrations are
+// written by hand and applied with `prisma migrate deploy` (the `db:migrate`
+// script). Never run `prisma migrate dev` against this project.
+//
+// Consequently a few SQL constructs below are intentionally absent here because
+// Prisma has no syntax for them. They are NOT drift:
+//   - CHECK constraints (status / designation / party_role / scope_type
+//     enumerations, and the separation-of-duties CHECK on
+//     access_grant_requests)
+//   - partial indexes (`... WHERE revoked_at IS NULL`) on
+//     security_designations and entitlement_grants
+//   - the grants, the hash-chain function, and the trigger
+//
+// Model names deliberately match table names exactly (snake_case). The client
+// surface reads slightly unidiomatically, but it means a model name in
+// TypeScript, a table name in a migration, and a table name in a psql session
+// are the same string — which is worth more on a project whose correctness
+// arguments are made in SQL.
+// =============================================================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // Phase 1 creates only `platform`. `evidentiary` and `speedytrial`
+  // (TechArch/02a-data-shared.md §5) arrive in Phases 5 and 7.
+  schemas  = ["platform"]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+// -----------------------------------------------------------------------------
+// §5.3 Case model — organisational spine
+// -----------------------------------------------------------------------------
+
+model courts {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  court_name String
+  court_code String @unique
+
+  divisions             divisions[]
+  cases                 cases[]
+  user_roles            user_roles[]
+  court_profiles        court_profiles?
+  rule_package_versions rule_package_versions[]
+  retention_schedules   retention_schedules[]
+  access_grant_requests access_grant_requests[]
+
+  @@schema("platform")
+}
+
+model divisions {
+  id            String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  court_id      String @db.Uuid
+  division_name String
+
+  court                 courts                  @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cases                 cases[]
+  user_roles            user_roles[]
+  access_grant_requests access_grant_requests[]
+
+  @@unique([court_id, division_name])
+  @@schema("platform")
+}
+
+// -----------------------------------------------------------------------------
+// §5.2 Identity (F00)
+// -----------------------------------------------------------------------------
+
+model users {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  external_idp_subject String   @unique
+  display_name         String
+  email                String
+  workspace_preference String?
+  /// CHECK (status IN ('active','disabled'))
+  status               String   @default("active")
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime @default(now()) @db.Timestamptz(6)
+
+  user_roles                      user_roles[]            @relation("user_roles_subject")
+  user_roles_granted              user_roles[]            @relation("user_roles_granted_by")
+  user_roles_revoked              user_roles[]            @relation("user_roles_revoked_by")
+  scope_assignments               scope_assignments[]
+  sessions                        sessions[]
+  proceedings_presiding           proceedings[]           @relation("proceedings_presiding_judge")
+  security_designations_applied   security_designations[] @relation("security_designations_applied_by")
+  security_designations_revoked   security_designations[] @relation("security_designations_revoked_by")
+  audit_events                    audit_events[]
+  rule_package_versions_drafted   rule_package_versions[] @relation("rule_package_versions_drafted_by")
+  rule_package_versions_approved  rule_package_versions[] @relation("rule_package_versions_approved_by")
+  file_references                 file_references[]
+  disposition_log                 disposition_log[]
+  access_grant_requests_subject   access_grant_requests[] @relation("access_grant_requests_subject")
+  access_grant_requests_requested access_grant_requests[] @relation("access_grant_requests_requested_by")
+  access_grant_requests_decided   access_grant_requests[] @relation("access_grant_requests_decided_by")
+  entitlement_grants              entitlement_grants[]    @relation("entitlement_grants_subject")
+  entitlement_grants_granted      entitlement_grants[]    @relation("entitlement_grants_granted_by")
+  entitlement_grants_revoked      entitlement_grants[]    @relation("entitlement_grants_revoked_by")
+  integrity_alerts_acknowledged   integrity_alerts[]
+  bootstrap_state                 bootstrap_state[]
+
+  @@schema("platform")
+}
+
+/// The role catalog is seeded reference data (plan 01-04), not a type — hence no
+/// CHECK on `role_name`, matching TechArch §5.2. Ten roles are seeded, following
+/// FRD/Y0a and FRD/F00 over TechArch's nine-name comment; see ASM-05.
+model roles {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  role_name   String  @unique
+  description String?
+
+  user_roles            user_roles[]
+  access_grant_requests access_grant_requests[]
+
+  @@schema("platform")
+}
+
+model user_roles {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String    @db.Uuid
+  role_id      String    @db.Uuid
+  court_id     String?   @db.Uuid
+  division_id  String?   @db.Uuid
+  granted_by   String    @db.Uuid
+  granted_at   DateTime  @default(now()) @db.Timestamptz(6)
+  // Phase 1 additions — traceability to the approving request, and revocation
+  // without a hard delete. `app_rw` holds UPDATE only on revoked_at/revoked_by.
+  request_id   String?   @db.Uuid
+  is_bootstrap Boolean   @default(false)
+  revoked_at   DateTime? @db.Timestamptz(6)
+  revoked_by   String?   @db.Uuid
+
+  user     users                  @relation("user_roles_subject", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  role     roles                  @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  court    courts?                @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  division divisions?             @relation(fields: [division_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  grantor  users                  @relation("user_roles_granted_by", fields: [granted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  revoker  users?                 @relation("user_roles_revoked_by", fields: [revoked_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  request  access_grant_requests? @relation(fields: [request_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([user_id, role_id, court_id, division_id])
+  @@index([user_id], map: "idx_user_roles_user")
+  @@index([court_id], map: "idx_user_roles_court")
+  @@schema("platform")
+}
+
+model scope_assignments {
+  id               String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String  @db.Uuid
+  /// CHECK (scope_type IN ('court','division','case','proceeding','party_role','security_designation'))
+  scope_type       String
+  /// Null for the enum-typed scopes (party_role / security_designation).
+  scope_value      String? @db.Uuid
+  scope_enum_value String?
+
+  user users @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_scope_assignments_user")
+  @@index([scope_value], map: "idx_scope_assignments_value")
+  @@schema("platform")
+}
+
+model sessions {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String    @db.Uuid
+  refresh_token_hash String
+  mfa_satisfied      Boolean   @default(false)
+  issued_at          DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at         DateTime  @db.Timestamptz(6)
+  revoked_at         DateTime? @db.Timestamptz(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_sessions_user")
+  @@schema("platform")
+}
+
+// -----------------------------------------------------------------------------
+// §5.3 Case model (F01)
+// -----------------------------------------------------------------------------
+
+model cases {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  court_id          String   @db.Uuid
+  division_id       String   @db.Uuid
+  case_number       String
+  case_caption      String
+  case_type         String
+  // Provenance (CONTEXT: full provenance ships in Phase 1).
+  source_system     String   @default("manual")
+  source_identifier String?
+  locally_modified  Boolean  @default(false)
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+  /// Phase 1 addition. CHECK (status IN ('open','closed','superseded')) — the
+  /// transition target that makes "no hard deletes" expressible.
+  status            String   @default("open")
+
+  court               courts                @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  division            divisions             @relation(fields: [division_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  proceedings         proceedings[]
+  parties             parties[]
+  docket_events       docket_events[]
+  document_references document_references[]
+
+  @@unique([division_id, case_number])
+  @@index([court_id], map: "idx_cases_court")
+  @@index([source_system, source_identifier], map: "idx_cases_source")
+  @@schema("platform")
+}
+
+model proceedings {
+  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id            String  @db.Uuid
+  proceeding_type    String
+  /// CHECK (status IN ('open','closed'))
+  status             String  @default("open")
+  presiding_judge_id String? @db.Uuid
+
+  case            cases      @relation(fields: [case_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  presiding_judge users?     @relation("proceedings_presiding_judge", fields: [presiding_judge_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  hearings        hearings[]
+
+  @@index([case_id], map: "idx_proceedings_case")
+  @@schema("platform")
+}
+
+model hearings {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  proceeding_id String    @db.Uuid
+  scheduled_at  DateTime  @db.Timestamptz(6)
+  held_at       DateTime? @db.Timestamptz(6)
+  hearing_type  String
+
+  proceeding proceedings @relation(fields: [proceeding_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([proceeding_id], map: "idx_hearings_proceeding")
+  @@schema("platform")
+}
+
+model parties {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id           String  @db.Uuid
+  party_name        String
+  /// CHECK (party_role IN ('defendant','government','plaintiff','counsel','pro_se'))
+  party_role        String
+  /// CM/ECF party identifier.
+  external_id       String?
+  // Provenance (CONTEXT: full provenance ships in Phase 1).
+  source_system     String  @default("manual")
+  source_identifier String?
+  locally_modified  Boolean @default(false)
+  /// Phase 1 addition. CHECK (status IN ('active','withdrawn')).
+  status            String  @default("active")
+
+  case cases @relation(fields: [case_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([case_id], map: "idx_parties_case")
+  @@schema("platform")
+}
+
+model docket_events {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id           String   @db.Uuid
+  source_system     String
+  source_identifier String
+  event_code        String?
+  event_description String?
+  event_date        DateTime @db.Timestamptz(6)
+  locally_modified  Boolean  @default(false)
+
+  case cases @relation(fields: [case_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([source_system, source_identifier])
+  @@index([case_id], map: "idx_docket_events_case")
+  @@index([event_date], map: "idx_docket_events_date")
+  @@schema("platform")
+}
+
+model document_references {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  case_id           String  @db.Uuid
+  source_system     String
+  source_identifier String?
+  document_title    String?
+  /// Reference to object store / repository location.
+  storage_pointer   String?
+  /// Provenance (CONTEXT: full provenance ships in Phase 1).
+  locally_modified  Boolean @default(false)
+
+  case cases @relation(fields: [case_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([case_id], map: "idx_document_references_case")
+  @@schema("platform")
+}
+
+/// A designation can be LIFTED, so the table needs a lifecycle. With no DELETE
+/// grant, `revoked_at`/`revoked_by` is the only lawful way to express that —
+/// and it is the same shape used by user_roles and entitlement_grants.
+/// Plan 01-07's PDP resource loader filters every read on `revoked_at IS NULL`;
+/// the matching partial index lives in the migration (Prisma cannot express it).
+model security_designations {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// 'case' | 'document_reference' | 'exhibit'
+  object_type String
+  object_id   String    @db.Uuid
+  /// CHECK (designation IN ('sealed','restricted','grand_jury','juvenile','pii'))
+  designation String
+  applied_by  String    @db.Uuid
+  applied_at  DateTime  @default(now()) @db.Timestamptz(6)
+  revoked_at  DateTime? @db.Timestamptz(6)
+  revoked_by  String?   @db.Uuid
+
+  applier users  @relation("security_designations_applied_by", fields: [applied_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  revoker users? @relation("security_designations_revoked_by", fields: [revoked_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([object_type, object_id], map: "idx_security_designations_object")
+  @@schema("platform")
+}
+
+// -----------------------------------------------------------------------------
+// §5.4 Audit (F02) — append-only, hash-chained
+// -----------------------------------------------------------------------------
+
+/// APPEND-ONLY AT THE DATABASE GRANT LEVEL. `app_rw` holds SELECT + INSERT and
+/// nothing else; an UPDATE or DELETE issued through this client fails with
+/// SQLSTATE 42501 from PostgreSQL, not from Prisma. A BEFORE INSERT trigger
+/// additionally recomputes `row_hash` server-side and rejects a mismatch.
+/// Writers must obtain the hash from `platform.compute_audit_row_hash(...)`.
+model audit_events {
+  id                      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor_id                String   @db.Uuid
+  action_type             String
+  object_type             String
+  object_id               String   @db.Uuid
+  before_state            Json?
+  after_state             Json?
+  rule_version_ref        String?  @db.Uuid
+  calculation_version_ref String?  @db.Uuid
+  client_ip               String?
+  session_id              String?  @db.Uuid
+  occurred_at             DateTime @default(now()) @db.Timestamptz(6)
+  prev_hash               String
+  row_hash                String
+
+  actor users @relation(fields: [actor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([object_type, object_id], map: "idx_audit_events_object")
+  @@index([actor_id], map: "idx_audit_events_actor")
+  @@index([occurred_at], map: "idx_audit_events_occurred")
+  @@schema("platform")
+}
+
+/// Single-row chain head. `id Boolean @id @default(true)` with a CHECK (id) in
+/// SQL makes a second row impossible, so `prev_hash` sequencing serialises on
+/// one lockable row instead of racing on MAX(occurred_at).
+model audit_chain_head {
+  id                  Boolean  @id @default(true)
+  last_row_hash       String
+  last_audit_event_id String?  @db.Uuid
+  updated_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("platform")
+}
+
+// -----------------------------------------------------------------------------
+// §5.5 Configuration (F03) — Phase 1 creates the tables ONLY.
+// -----------------------------------------------------------------------------
+
+model court_profiles {
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  court_id String @unique @db.Uuid
+
+  court courts @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("platform")
+}
+
+/// Created in Phase 1 only because `security_policies.rule_package_version_id`
+/// carries a NOT NULL FK to it. Phase 2 adds versioning, the maker-checker
+/// publish flow, and the admin UI on top.
+model rule_package_versions {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  court_id        String    @db.Uuid
+  version_number  Int
+  drafted_by      String    @db.Uuid
+  approved_by     String?   @db.Uuid
+  effective_from  DateTime? @db.Timestamptz(6)
+  published_at    DateTime? @db.Timestamptz(6)
+  config_snapshot Json
+
+  court             courts              @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  drafter           users               @relation("rule_package_versions_drafted_by", fields: [drafted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  approver          users?              @relation("rule_package_versions_approved_by", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  security_policies security_policies[]
+
+  @@unique([court_id, version_number])
+  @@index([court_id, effective_from], map: "idx_rule_package_versions_court")
+  @@schema("platform")
+}
+
+// -----------------------------------------------------------------------------
+// §5.9 Security & retention subset (F13)
+// -----------------------------------------------------------------------------
+
+model file_references {
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storage_pointer  String
+  file_type        String
+  uploaded_by      String @db.Uuid
+  declared_purpose String
+  /// CHECK (scan_status IN ('pending','clean','rejected')) — uploads are
+  /// quarantined as 'pending' until an async scan completes.
+  scan_status      String @default("pending")
+
+  uploader             users                  @relation(fields: [uploaded_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  malware_scan_results malware_scan_results[]
+
+  @@index([scan_status], map: "idx_file_references_scan_status")
+  @@schema("platform")
+}
+
+/// Append-only: `app_rw` holds SELECT + INSERT only. A scan result is a
+/// historical fact about a point in time, not a mutable status field.
+model malware_scan_results {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  file_reference_id String   @db.Uuid
+  scanned_at        DateTime @default(now()) @db.Timestamptz(6)
+  /// CHECK (result IN ('clean','infected','error'))
+  result            String
+
+  file_reference file_references @relation(fields: [file_reference_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("platform")
+}
+
+model security_policies {
+  id                      String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rule_package_version_id String @db.Uuid
+  designation             String
+  required_entitlement    String
+
+  rule_package_version rule_package_versions @relation(fields: [rule_package_version_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("platform")
+}
+
+model retention_schedules {
+  id                    String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  court_id              String @db.Uuid
+  record_category       String
+  retention_period_days Int
+  disposition_action    String
+
+  court courts @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("platform")
+}
+
+/// Append-only (TechArch 04 §7.5: "disposition actions themselves are logged to
+/// the append-only disposition_log, never silently executed").
+model disposition_log {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  object_type        String
+  object_id          String   @db.Uuid
+  disposition_action String
+  confirmed_by       String   @db.Uuid
+  confirmed_at       DateTime @default(now()) @db.Timestamptz(6)
+
+  confirmer users @relation(fields: [confirmed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([object_type, object_id], map: "idx_disposition_log_object")
+  @@schema("platform")
+}
+
+// -----------------------------------------------------------------------------
+// Phase 1 additions beyond TechArch — each traced in docs/SCHEMA-NOTES.md to the
+// CONTEXT decision requiring it.
+// -----------------------------------------------------------------------------
+
+/// CONTEXT: "Entitlements are first-class and grantable independently of roles."
+model entitlement_definitions {
+  id                         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entitlement_key            String  @unique
+  description                String
+  is_designation_entitlement Boolean @default(false)
+
+  entitlement_grants    entitlement_grants[]
+  access_grant_requests access_grant_requests[]
+
+  @@schema("platform")
+}
+
+/// CONTEXT: "Two-step request -> approve, enforced server-side at the API layer."
+/// Separation of duties is additionally asserted by a table-level
+/// CHECK (decided_by IS NULL OR decided_by <> requested_by), so a self-approval
+/// is refused by PostgreSQL even on a code path that forgot to check.
+model access_grant_requests {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// CHECK (grant_type IN ('role','entitlement'))
+  grant_type       String
+  subject_user_id  String    @db.Uuid
+  role_id          String?   @db.Uuid
+  entitlement_key  String?
+  court_id         String?   @db.Uuid
+  division_id      String?   @db.Uuid
+  /// CHECK (scope_type IN ('court','division','case','proceeding','party_role','security_designation'))
+  scope_type       String?
+  scope_value      String?   @db.Uuid
+  scope_enum_value String?
+  justification    String
+  requested_by     String    @db.Uuid
+  requested_at     DateTime  @default(now()) @db.Timestamptz(6)
+  /// CHECK (status IN ('pending','approved','denied'))
+  status           String    @default("pending")
+  decided_by       String?   @db.Uuid
+  decided_at       DateTime? @db.Timestamptz(6)
+  is_bootstrap     Boolean   @default(false)
+
+  subject     users                    @relation("access_grant_requests_subject", fields: [subject_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  role        roles?                   @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  entitlement entitlement_definitions? @relation(fields: [entitlement_key], references: [entitlement_key], onDelete: NoAction, onUpdate: NoAction)
+  court       courts?                  @relation(fields: [court_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  division    divisions?               @relation(fields: [division_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requester   users                    @relation("access_grant_requests_requested_by", fields: [requested_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  decider     users?                   @relation("access_grant_requests_decided_by", fields: [decided_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  entitlement_grants entitlement_grants[]
+  user_roles         user_roles[]
+
+  @@index([status, requested_at], map: "idx_access_grant_requests_status")
+  @@index([subject_user_id], map: "idx_access_grant_requests_subject")
+  @@schema("platform")
+}
+
+/// CONTEXT: "Every grant carries its own record, grantor, timestamp, and audit
+/// event." `app_rw` holds UPDATE only on revoked_at/revoked_by, so a grant's
+/// substance can never be rewritten — only its revocation recorded.
+model entitlement_grants {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  request_id       String?   @db.Uuid
+  user_id          String    @db.Uuid
+  entitlement_key  String
+  /// CHECK (scope_type IN ('court','division','case','proceeding','party_role','security_designation'))
+  scope_type       String?
+  scope_value      String?   @db.Uuid
+  scope_enum_value String?
+  granted_by       String    @db.Uuid
+  granted_at       DateTime  @default(now()) @db.Timestamptz(6)
+  is_bootstrap     Boolean   @default(false)
+  revoked_at       DateTime? @db.Timestamptz(6)
+  revoked_by       String?   @db.Uuid
+
+  request     access_grant_requests?  @relation(fields: [request_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user        users                   @relation("entitlement_grants_subject", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  entitlement entitlement_definitions @relation(fields: [entitlement_key], references: [entitlement_key], onDelete: NoAction, onUpdate: NoAction)
+  grantor     users                   @relation("entitlement_grants_granted_by", fields: [granted_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  revoker     users?                  @relation("entitlement_grants_revoked_by", fields: [revoked_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("platform")
+}
+
+/// CONTEXT: "A detected break writes a persistent integrity_alert record ...
+/// Phase 3 routes these existing records into the Exception Queue." Phase 1
+/// must NOT create the F07 `exceptions` table — this is its Phase 1 stand-in,
+/// and the records it writes are the ones Phase 3 will route.
+model integrity_alerts {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  alert_type      String    @default("audit_integrity_break")
+  /// CHECK (severity IN ('low','medium','high','critical'))
+  severity        String    @default("critical")
+  audit_event_id  String?   @db.Uuid
+  expected_hash   String?
+  actual_hash     String?
+  detail          Json
+  detected_at     DateTime  @default(now()) @db.Timestamptz(6)
+  /// CHECK (status IN ('open','acknowledged')) — a P0 break is acknowledged by
+  /// a named human, never auto-dismissed (TechArch 04 §7.3).
+  status          String    @default("open")
+  acknowledged_by String?   @db.Uuid
+  acknowledged_at DateTime? @db.Timestamptz(6)
+
+  acknowledger users? @relation(fields: [acknowledged_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status, detected_at], map: "idx_integrity_alerts_status")
+  @@schema("platform")
+}
+
+/// CONTEXT: "An explicit bootstrap-completion step must disable or rotate them
+/// before normal operation." Single-row, same CHECK (id) shape as
+/// audit_chain_head.
+model bootstrap_state {
+  id           Boolean   @id @default(true)
+  completed_at DateTime? @db.Timestamptz(6)
+  completed_by String?   @db.Uuid
+
+  completer users? @relation(fields: [completed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@schema("platform")
+}
