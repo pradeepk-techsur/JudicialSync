@@ -40,4 +40,16 @@ module.exports = {
   // database; parallel workers would contend on both and on the session
   // fixtures they create.
   maxWorkers: 1,
+  // The identity module's Redis client (`redis.provider.ts`) is a plain
+  // ioredis instance with no shutdown hook, so its socket stays open after
+  // `app.close()` and Jest waits on it indefinitely — the run reports
+  // "Jest did not exit one second after the test run has completed" and then
+  // hangs until something kills it. In CI that is an un-timed-out job rather
+  // than a test failure, which is why it is worth pinning here.
+  //
+  // `forceExit` ends the process once the suites have finished. Every
+  // assertion has already run and been reported by that point, so this
+  // suppresses no result — it only declines to wait on a connection nothing
+  // is going to close.
+  forceExit: true,
 };
