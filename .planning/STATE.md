@@ -3,15 +3,15 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md (repository substrate + deny-by-default guard chain)
-last_updated: "2026-10-05T12:56:02.708Z"
-last_activity: 2026-10-05 — Plans 01-01 and 01-02 complete (repository substrate + deny-by-default guard chain; OPA/Rego authorization policy bundle)
+stopped_at: Completed 01-03-PLAN.md (platform schema, grant posture, audit hash chain)
+last_updated: "2026-10-05T13:15:59.303Z"
+last_activity: 2026-10-05 — Plan 01-03 complete (platform schema; audit immutability enforced at the database grant level)
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 2
-  percent: 1
+  completed_plans: 3
+  percent: 20
 ---
 
 # Project State
@@ -26,25 +26,25 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 ## Current Position
 
 Phase: 1 of 8 (Core Identity, Case Model, Audit & Security Baseline)
-Plan: 3 of 15
+Plan: 4 of 15
 Status: Executing
-Last activity: 2026-10-05 — Plans 01-01 and 01-02 complete (repository substrate + deny-by-default guard chain; OPA/Rego authorization policy bundle)
+Last activity: 2026-10-05 — Plan 01-03 complete (platform schema; audit immutability enforced at the database grant level)
 
-Progress: [░░░░░░░░░░] 1%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 2
-- Average duration: 29 min
-- Total execution time: 1.0 hours
+- Total plans completed: 3
+- Average duration: 33 min
+- Total execution time: 1.6 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| Phase 01 | 2 | 57 min | 29 min |
+| Phase 01 | 3 | 98 min | 33 min |
 
 **Per-plan detail:**
 
@@ -52,11 +52,12 @@ Progress: [░░░░░░░░░░] 1%
 |------|----------|-------|-------|
 | 01-01 | 15 min | 3 | 33 |
 | 01-02 | 42 min | 3 | 14 |
+| 01-03 | 41 min | 3 | 13 |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (15 min), 01-02 (42 min)
-- Trend: stable — both wave-1 plans completed well inside expectations
+- Last 5 plans: 01-01 (15 min), 01-02 (42 min), 01-03 (41 min)
+- Trend: stable — wave 2 matching wave 1's pace
 
 *Updated after each plan completion*
 
@@ -78,6 +79,11 @@ Recent decisions affecting current work:
 - [Phase 01]: Guard stubs deny rather than allow — a route added before plans 01-06/01-07 land must 401/503, never 200; 503 SECURITY_POLICY_UNAVAILABLE is also the correct real response when OPA is unreachable, so the stub exercises the production code path
 - [Phase 01]: app.module.ts, apps/api/package.json, .env.example and ci.yml are single-owner files declaring their full Phase 1 content up front; later plans add sibling files (policy.yml/e2e.yml/assurance.yml) rather than editing shared ones
 - [Phase 01]: Principal.entitlements modelled as a first-class field distinct from roles, so role existence can never imply access; 10 roles implemented including ao_program_manager following FRD/Y0a over TechArch 5.2, with the spec disagreement recorded as ASM-05 rather than silently resolved
+- [Phase 01]: Audit row_hash covers a pinned, ordered field list rather than to_jsonb(NEW) — a whole-row hash is self-referential and would invalidate every historical chain the first time a later phase adds a column, turning routine migrations into total-chain-break alarms
+- [Phase 01]: entitlement_grants, user_roles and security_designations hold column-scoped UPDATE on revoked_at/revoked_by only; table-wide UPDATE would permit retitling a sealing order while keeping its original grantor and timestamp — a forged record with credible provenance
+- [Phase 01]: security_designations gains revoked_at/revoked_by (a traced departure from TechArch 5.3) because a sealing order can be lifted and, with no DELETE grant and no status column, there would be no lawful way to say so
+- [Phase 01]: PrismaService asserts current_user = app_rw at boot (fatal in production): pointing DATABASE_URL at the migration role app_dba would void every append-only grant while every test still passed
+- [Phase 01]: Hand-written SQL migrations are authoritative and schema.prisma is a pinned mirror (index map: + NoAction relations) so prisma migrate diff reports empty and becomes a real drift gate; prisma migrate dev must never be run, as it would drop the grants and the trigger
 
 ### Pending Todos
 
@@ -91,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-05T12:55:52.327Z
-Stopped at: Completed 01-01-PLAN.md (repository substrate + deny-by-default guard chain)
+Last session: 2026-10-05T13:15:59.302Z
+Stopped at: Completed 01-03-PLAN.md (platform schema, grant posture, audit hash chain)
 Resume file: None
