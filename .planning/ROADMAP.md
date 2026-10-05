@@ -36,7 +36,24 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. A user lacking a specific security-designation entitlement (sealed/restricted/grand-jury/juvenile/PII) is denied access to a tagged record, and the denied attempt itself is logged as an audit event.
   5. An uploaded file of a disallowed type or failing malware scan is rejected before storage, and all data is encrypted in transit and at rest.
   *(Note: this phase's goal references "so every later feature has a safe foundation" — this is an enabling promise for Phases 2–8, not a criterion testable within this phase itself.)*
-**Plans**: TBD
+**Plans**: 15 plans across 8 waves
+
+Plans:
+- [ ] 01-01-PLAN.md — Monorepo, NestJS Platform Core skeleton, deny-by-default global guards, CI, assumptions register (wave 1)
+- [ ] 01-02-PLAN.md — OPA Rego policy bundle (RBAC gate, ABAC scope, designation 403-vs-404, SoD) with its own test suite (wave 1)
+- [ ] 01-03-PLAN.md — Platform schema, migrations, app_rw/app_dba grants, append-only enforcement, hash-chain trigger (wave 2)
+- [ ] 01-04-PLAN.md — Docker Compose stack behind one TLS origin, Keycloak realm with real TOTP, idempotent seed (wave 3)
+- [ ] 01-05-PLAN.md — Audit Service: hash-chained append-only writes, transactional outbox, service-only write API (wave 3)
+- [ ] 01-06-PLAN.md — Identity: real OIDC/MFA, sessions with immediate revocation, entitlement resolution (wave 4)
+- [ ] 01-07-PLAN.md — Global ABAC guard, OPA PDP integration, fail-closed, access_attempt auditing (wave 5)
+- [ ] 01-08-PLAN.md — Entitlement grants: two-person request→approve with server-side SoD, constrained bootstrap (wave 6)
+- [ ] 01-09-PLAN.md — Shared case & docket context API: no deletes, full provenance, security designations (wave 6)
+- [ ] 01-10-PLAN.md — File upload pipeline: allowlist → ClamAV → encrypted MinIO, authenticated download (wave 6)
+- [ ] 01-11-PLAN.md — Configuration read path, retention schedules, no-auto-purge guard, key-access SoD, fallback runbook (wave 6)
+- [ ] 01-12-PLAN.md — Audit Explorer API plus BullMQ chain-verification job writing integrity_alert records (wave 6)
+- [ ] 01-13-PLAN.md — OpenAPI contract, generated TS client, USWDS shell with real browser login, axe gate (wave 7)
+- [ ] 01-14-PLAN.md — Negative-path assurance suite evidencing success criteria 1, 3, 4, and 5 (wave 7)
+- [ ] 01-15-PLAN.md — Case list and Audit Explorer screens with Playwright and extended accessibility coverage (wave 8)
 
 ### Phase 2: Platform Configuration & Communication Services
 **Goal**: Give each court the ability to configure its own rules, thresholds, and event mappings without a code fork, be notified of risk through policy-compliant channels, and find anything a user is authorized to see — so local variation never requires custom deployment and risk signals reach the right person without exposing sensitive content.
@@ -122,7 +139,7 @@ Phases execute in numeric order for bookkeeping: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Identity, Case Model, Audit & Security Baseline | 0/TBD | Not started | - |
+| 1. Core Identity, Case Model, Audit & Security Baseline | 0/15 | Planned | - |
 | 2. Platform Configuration & Communication Services | 0/TBD | Not started | - |
 | 3. Workflow Aggregation & CM/ECF Sync | 0/TBD | Not started | - |
 | 4. Role-Specific UI Workspaces & External Attorney Portal | 0/TBD | Not started | - |
