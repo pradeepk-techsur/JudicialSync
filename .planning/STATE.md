@@ -3,15 +3,15 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-06-PLAN.md (real OIDC identity, sessions, entitlement resolution)
-last_updated: "2026-10-05T20:34:14.372Z"
-last_activity: "2026-10-05 — Wave 4: 01-06 landed (real OIDC login against Keycloak with TOTP MFA, session revocation, grant-only entitlements)"
+stopped_at: Completed 01-07-PLAN.md (real ABAC enforcement against OPA, 403/404 split, access_attempt auditing)
+last_updated: "2026-10-05T21:54:36.833Z"
+last_activity: "2026-10-05 — Wave 5: 01-07 landed (AbacGuard enforces real OPA decisions; stopping OPA turns 200 into 503)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 6
-  percent: 40
+  completed_plans: 7
+  percent: 47
 ---
 
 # Project State
@@ -26,25 +26,25 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 ## Current Position
 
 Phase: 1 of 8 (Core Identity, Case Model, Audit & Security Baseline)
-Plan: 6 of 15 complete (wave 4: 01-06 landed; 01-07 next)
+Plan: 7 of 15 complete (wave 5: 01-07 landed; 01-08 next)
 Status: Executing
-Last activity: 2026-10-05 — Wave 4: 01-06 landed (real OIDC login against Keycloak with TOTP MFA, session revocation, grant-only entitlements)
+Last activity: 2026-10-05 — Wave 5: 01-07 landed (AbacGuard enforces real OPA decisions; stopping OPA turns 200 into 503)
 
-Progress: [████░░░░░░] 40%
+Progress: [█████░░░░░] 47%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 6
-- Average duration: 55 min
-- Total execution time: 5.5 hours
+- Total plans completed: 7
+- Average duration: 58 min
+- Total execution time: 6.8 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| Phase 01 | 6 | 328 min | 55 min |
+| Phase 01 | 7 | 406 min | 58 min |
 
 **Per-plan detail:**
 
@@ -56,14 +56,14 @@ Progress: [████░░░░░░] 40%
 | 01-04 | 95 min | 3 | 18 |
 | 01-05 | 38 min | 3 | 13 |
 | 01-06 | 97 min | 3 | 23 |
+| 01-07 | 78 min | 3 | 16 |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-02 (42 min), 01-03 (41 min), 01-04 (95 min), 01-05 (38 min), 01-06 (97 min)
-- Trend: 01-04 and 01-06 are the outliers, for the same underlying reason — both integrate against live external systems. 01-06's time went almost entirely into five real defects (ACR alias, RFC 9207 iss, ioredis readiness, worker CA trust, cross-suite TOTP reuse) that no amount of unit testing would have surfaced, because each lived in the gap between what the IdP documents and what it emits.
+- Last 5 plans: 01-03 (41 min), 01-04 (95 min), 01-05 (38 min), 01-06 (97 min), 01-07 (78 min)
+- Trend: 01-04, 01-06 and 01-07 are the outliers, for the same underlying reason — all three integrate against live external systems. 01-06's time went into five real defects in the gap between what the IdP documents and what it emits; 01-07's went into four found only by running the suites (an unreachable PDP address, an audit query matching login rows, a stale principal cache, a default parameter that swallowed an explicit undefined) plus two cross-plan fixture/config gaps that no single plan's tests could have seen. The pattern is consistent: time spent against a live stack buys defects that unit tests structurally cannot find.
 
 *Updated after each plan completion*
-| Phase 01 P06 | 97 min | 3 tasks | 23 files |
 
 ## Accumulated Context
 
@@ -110,6 +110,15 @@ Recent decisions affecting current work:
 - [Phase 01]: Authentication integration tests drive the REAL Keycloak with real TOTP rather than a mock; a mocked IdP built from the same assumptions as the implementation would have confirmed all five defects this plan found instead of catching them
 - [Phase 01]: IdentityModule is @Global() so the APP_GUARD registered in app.module.ts resolves SessionService without editing that single-owner file, preserving plan 01-01's composition-root rule
 - [Phase 01]: Entitlement cache invalidation and session revocation are a documented PAIR — invalidate-without-revoke leaves in-flight requests stale, and revoke-without-invalidate is worse because the user's NEW session resolves from a cache holding the old entitlements and looks like it worked
+- [Phase 01]: AbacGuard assembles input, OPA decides, the guard translates — no entitlement, court, designation or self-approval comparison exists in TypeScript, asserted by grep so a reimplementation (a second, silently-diverging policy) cannot land unnoticed
+- [Phase 01]: PdpClient has no cached-decision, last-known-good or fail-open-circuit-breaker path: a cached allow is issued by a system that cannot evaluate whether it should allow, replaying the entitlement most likely just revoked — the class comment names each tempting 'availability improvement' as the same bug
+- [Phase 01]: input.security_policies is OMITTED, never sent empty, when a court has no rows — the Rego replaces its defaults wholesale, so [] would map every designation to nothing and deny every designated record in a court whose configuration had not loaded
+- [Phase 01]: parsePdpDecision rejects a stringly-typed allow rather than coercing it: Boolean("false") is true, so coercion would convert the fail-closed client into a fail-open one on a bundle that returned a stringly-typed decision
+- [Phase 01]: Both the existence-hidden and genuinely-absent 404 paths call one notFound() method, so the bodies cannot diverge into an existence oracle; the guard suite asserts the two responses byte-identical rather than asserting each status separately
+- [Phase 01]: A failed access_attempt write on a denial is logged as an integrity gap and SWALLOWED — the only place an audit failure does not abort, because converting a 403 into a 500 hands the caller a different signal and on the 404 path leaks that something is there to fail about
+- [Phase 01]: Every security_designations read goes through one activeDesignationsFor helper filtering revoked_at IS NULL: a missed filter is a false DENIAL, which users report as 'I lack the entitlement' rather than as a bug, so it can persist for the life of a record
+- [Phase 01]: The missing-@Resource() probe route lives in test code, never in the application: a real route missing its descriptor IS the bug the guard exists to catch, so shipping one to prove the guard works would ship the vulnerability to test the mitigation
+- [Phase 01]: /security/policy-evaluate accepts requester_scope for TechArch 6.9 shape compatibility and never lets it influence the decision (honouring it would be a complete authorization bypass), echoing disagreements under detail.supplied_scope_ignored so caller drift is visible rather than silent
 
 ### Pending Todos
 
@@ -123,9 +132,11 @@ None yet.
 - ASM-08 (from 01-05): the `docs/SCHEMA-NOTES.md` §7 `search_path` rule applies to EVERY future `platform.*` function, but the regression gate in migration `20260101000300` only covers `compute_audit_row_hash`. A later migration adding an unpinned function reintroduces the same production-breaking defect (`digest()` unresolvable under `search_path=platform`, which aborts every audit write and therefore every audited domain write) with no automated catch. Worth a generic lint over `pg_proc.proconfig` in a later assurance plan.
 - ASM-09 (from 01-04): two pinned container images vanished mid-phase — `minio/minio` was withdrawn from Docker Hub entirely (quay.io now requires authentication for every tag) and `clamav/clamav:1.3.1_base` was delisted. MinIO is now `chainguard/minio` DIGEST-pinned, which is a stronger pin than a tag but tracks no upstream release line and will not receive patches without a deliberate bump. Nothing checks that the stack's images still resolve, so the next withdrawal surfaces as a failed build in whichever plan happens to run next. Worth a registry-reachability check in a later assurance plan.
 - ASM-10 (from 01-06): `SESSION_TOKEN_SECRET` is consumed by `SessionService` but is absent from `.env.example`, which plan 01-01 owns and this plan could not modify. Unset, each process derives an ephemeral HMAC key, so access tokens do not survive a restart and do not validate across multiple instances — correct for local development and fatal for any multi-instance deployment. It is logged loudly at boot, but nothing fails. A later plan that may edit `.env.example` should declare it (marked `[SECRET]`, resolved from the secrets manager in production), and the Compose `api` service should set it.
+- DEF-01 (from 01-07, full detail in the phase's `deferred-items.md`): the seeded `judge` CANNOT read the seeded sealed case, so the **positive** half of Phase 1 criterion 4 is not demonstrable from the seed as it stands. 01-04 gives `judge` a `case` scope row on the PLAIN case, and under 01-02's narrowing semantics one such row confines the principal to exactly the cases named — the sealed read is therefore denied on SCOPE, before designation is ever considered. Both plans are individually correct and were never checked against each other; neither plan's tests could have caught it (01-02 uses synthetic principals, 01-04 asserts rows exist rather than what they authorize). 01-07's guard suite adds the row in-test and asserts BOTH states, so the semantics stay pinned. One-row fix in `seed/identity.ts` recommended to 01-14. Do NOT "fix" it by removing the narrowing — that would let every case-scoped principal, including the Phase 4 external attorney, reach every case in their court.
+- DEF-02 (from 01-07, PRE-EXISTING, full detail in `deferred-items.md`): `INTERNAL_SERVICE_TOKEN` is absent from `docker-compose.yml`'s `api` environment, so BOTH internal service routes — 01-05's `POST /audit/events` and 01-07's `POST /security/policy-evaluate` — return 403 in the deployed stack. `ServiceTokenGuard` failing closed on an unset secret is correct behaviour, so the symptom is the control working over a config gap. Nothing caught it because the in-process suites set the variable themselves and structurally cannot observe what Compose forwards, making this a coverage gap as much as a configuration one. One-line fix (the `:?` required-secret form the other secrets already use) recommended to 01-14, ideally with a test that calls an internal route through the deployed container.
 
 ## Session Continuity
 
-Last session: 2026-10-05T20:34:14.372Z
-Stopped at: Completed 01-06-PLAN.md (real OIDC identity, sessions, entitlement resolution)
+Last session: 2026-10-05T21:54:36.831Z
+Stopped at: Completed 01-07-PLAN.md (real ABAC enforcement against OPA, 403/404 split, access_attempt auditing)
 Resume file: None
