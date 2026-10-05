@@ -31,10 +31,19 @@ module.exports = {
   // nothing about the integration — which means they need `docker compose up`
   // and a globalSetup that installs Caddy's CA before the process starts.
   // Keeping them out of this config is what lets `npm test` stay hermetic.
+  //
+  // The `abac-*` suites (plan 01-07) are excluded on identical grounds and
+  // run under jest.policy.config.js: they evaluate against the real OPA
+  // container, and one of them STOPS it to prove the system fails closed.
+  // Note that the policy module's own hermetic unit tests
+  // (`src/modules/policy/policy-contract.spec.ts`) deliberately stay in THIS
+  // config — they stub the PDP over loopback and need no stack, so the
+  // properties they pin are checked on every commit.
   testPathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
     '/assurance/',
     '/test/auth-.*\\.e2e-spec\\.ts$',
+    '/test/abac-.*\\.e2e-spec\\.ts$',
   ],
 };

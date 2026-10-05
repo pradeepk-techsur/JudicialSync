@@ -60,7 +60,9 @@ export const REDIRECT_URI =
  * Resolved once, lazily, via `docker inspect`, and overridable by env for a
  * CI runner whose networking differs.
  */
-let discovered: { database: string; admin: string; redis: string } | undefined;
+let discovered:
+  | { database: string; admin: string; redis: string; opa: string }
+  | undefined;
 
 function serviceIp(container: string): string | undefined {
   try {
@@ -80,11 +82,17 @@ function serviceIp(container: string): string | undefined {
   }
 }
 
-function endpoints(): { database: string; admin: string; redis: string } {
+function endpoints(): {
+  database: string;
+  admin: string;
+  redis: string;
+  opa: string;
+} {
   if (discovered !== undefined) return discovered;
 
   const dbIp = serviceIp('judicialsync-db-1') ?? '127.0.0.1';
   const redisIp = serviceIp('judicialsync-redis-1') ?? '127.0.0.1';
+  const opaIp = serviceIp('judicialsync-opa-1') ?? '127.0.0.1';
 
   discovered = {
     database:
@@ -94,6 +102,7 @@ function endpoints(): { database: string; admin: string; redis: string } {
       process.env.TEST_MIGRATION_DATABASE_URL ??
       `postgresql://app_dba:app_dba_local_dev@${dbIp}:5432/judicialsync?schema=platform`,
     redis: process.env.TEST_REDIS_URL ?? `redis://${redisIp}:6379`,
+    opa: process.env.TEST_OPA_URL ?? `http://${opaIp}:8181`,
   };
   return discovered;
 }
@@ -116,6 +125,24 @@ export const testDatabaseUrl = (): string => endpoints().database;
 export const testAdminDatabaseUrl = (): string => endpoints().admin;
 
 export const testRedisUrl = (): string => endpoints().redis;
+
+/**
+ * The OPA container's address on the Compose network (plan 01-07).
+ *
+ * Discovered the same way `db` and `redis` are, and for the same reason: the
+ * Compose file publishes **only** `proxy:8443`, so `OPA_URL`'s `.env.example`
+ * default of `http://localhost:8181` reaches nothing from a test process on
+ * the host. Leaving it at the default made every policy evaluation fail with
+ * `TypeError: fetch failed` and every protected route answer 503 — the guard
+ * failing closed exactly as designed, over a test-harness address rather than
+ * a real outage.
+ *
+ * Worth noting that this failure mode is the *good* one: the system denied.
+ * Had the client been written to fall back on an unreachable PDP, the same
+ * misconfiguration would have produced a green suite in which nothing was
+ * ever actually authorized.
+ */
+export const testOpaUrl = (): string => endpoints().opa;
 
 /**
  * Seeded users and their TOTP secrets, from `docs/SEED-CREDENTIALS.md`.
@@ -563,9 +590,20 @@ function extractFormAction(html: string): string | undefined {
  *
  * The full guard chain, the global exception filter and the real DI graph are
  * all in play — the same idiom every other suite in this project uses.
+ *
+ * @param env overrides applied to `process.env` for the lifetime of the app,
+ *   restored by the returned `restoreEnv`.
+ * @param extraModules additional modules to register ALONGSIDE `AppModule`
+ *   (plan 01-07). Used only to mount probe controllers that cannot live in
+ *   application code — see `abac-probe.controller.ts` for why the
+ *   missing-`@Resource()` route is one of them. `AppModule` is always
+ *   imported first and unmodified, so the global guard chain, the exception
+ *   filter and every real provider are exactly what a deployment gets; the
+ *   extra module only adds routes for the guards to act on.
  */
 export async function bootApp(
   env: Record<string, string | undefined> = {},
+  extraModules: unknown[] = [],
 ): Promise<{ app: INestApplication; restoreEnv: () => void }> {
   const previous: Record<string, string | undefined> = {};
   const applied: Record<string, string | undefined> = {
@@ -575,6 +613,12 @@ export async function bootApp(
     OIDC_CLIENT_ID: CLIENT_ID,
     OIDC_CLIENT_SECRET: CLIENT_SECRET,
     OIDC_REDIRECT_URI: REDIRECT_URI,
+    // The PDP, on its Compose-network address — see `testOpaUrl`. Set for
+    // every suite rather than only the policy ones: `AbacGuard` is a GLOBAL
+    // guard, so any suite that hits a `@Resource()` route evaluates policy,
+    // and a suite that left this unset would get a 503 whose cause is the
+    // harness rather than the system under test.
+    OPA_URL: testOpaUrl(),
     SESSION_TOKEN_SECRET: 'test-session-signing-secret',
     NODE_ENV: 'test',
     ...env,
@@ -586,8 +630,12 @@ export async function bootApp(
     else process.env[key] = value;
   }
 
+  type NestImport = NonNullable<
+    Parameters<typeof Test.createTestingModule>[0]['imports']
+  >[number];
+
   const moduleRef = await Test.createTestingModule({
-    imports: [AppModule],
+    imports: [AppModule, ...(extraModules as NestImport[])],
   }).compile();
 
   const app = moduleRef.createNestApplication();

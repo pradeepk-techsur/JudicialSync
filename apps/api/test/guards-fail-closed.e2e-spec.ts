@@ -9,7 +9,11 @@ import { ApiException } from '../src/common/errors/api-error';
 import { ApiExceptionFilter } from '../src/common/errors/api-exception.filter';
 import { AbacGuard } from '../src/common/guards/abac.guard';
 import { SessionAuthGuard } from '../src/common/guards/session-auth.guard';
+import { PrismaService } from '../src/common/prisma/prisma.service';
+import { AuditService } from '../src/modules/audit/audit.service';
 import { SessionService } from '../src/modules/identity/session.service';
+import { PdpClient } from '../src/modules/policy/pdp.client';
+import { ResourceLoaderService } from '../src/modules/policy/resource-loader.service';
 
 /**
  * **Proof that deny-by-default holds.**
@@ -88,6 +92,45 @@ describe('Global guards fail closed (e2e)', () => {
               ),
           },
         },
+        // `AbacGuard` gained its real collaborators in plan 01-07. They are
+        // provided as THROWING doubles, for the same reason the
+        // `SessionService` double above rejects: every path this suite
+        // exercises is decided before the guard reaches any of them.
+        //
+        // `SessionAuthGuard` denies first on every non-public route here, and
+        // a public route returns from `AbacGuard` immediately. So if any of
+        // these is ever called, the chain has started doing something this
+        // suite does not expect, and the right outcome is a loud failure —
+        // not a stub quietly answering "allow".
+        {
+          provide: PdpClient,
+          useValue: {
+            evaluate: (): never => {
+              throw new Error(
+                'PdpClient.evaluate must not be reached: every route in this ' +
+                  'suite is denied before policy evaluation.',
+              );
+            },
+          },
+        },
+        {
+          provide: ResourceLoaderService,
+          useValue: {
+            load: (): never => {
+              throw new Error(
+                'ResourceLoaderService.load must not be reached in this suite.',
+              );
+            },
+            effectiveSecurityConfig: (): never => {
+              throw new Error(
+                'ResourceLoaderService.effectiveSecurityConfig must not be ' +
+                  'reached in this suite.',
+              );
+            },
+          },
+        },
+        { provide: PrismaService, useValue: {} },
+        { provide: AuditService, useValue: {} },
         // Registered exactly as app.module.ts registers them, in the same
         // order, so this test exercises the real chain rather than a
         // convenient approximation of it.
@@ -210,7 +253,37 @@ describe('Global guards fail closed (e2e)', () => {
     let guard: AbacGuard;
 
     beforeAll(() => {
-      guard = new AbacGuard(new Reflector());
+      // Plan 01-07 gave `AbacGuard` its real collaborators (PDP client,
+      // resource loader, Prisma, audit). None of them is reachable on the
+      // paths this suite exercises — a `@Public()` or `@SelfScoped()` route
+      // returns before the guard looks at anything, and an unmarked route is
+      // refused for the absence of a `@Resource()` descriptor, which is
+      // decided before any collaborator is touched.
+      //
+      // So they are passed as THROWING doubles rather than permissive ones.
+      // If a future change makes one of these paths call out to the PDP or
+      // the database, this suite fails loudly with "must not be reached"
+      // instead of quietly passing against a stub that said yes. The whole
+      // point of this file is to fail when the chain stops denying.
+      const unreachable = (name: string): never => {
+        throw new Error(
+          `${name} must not be reached on a public/self-scoped/undeclared route`,
+        );
+      };
+
+      guard = new AbacGuard(
+        new Reflector(),
+        {
+          evaluate: () => unreachable('PdpClient.evaluate'),
+        } as unknown as ConstructorParameters<typeof AbacGuard>[1],
+        {
+          load: () => unreachable('ResourceLoaderService.load'),
+          effectiveSecurityConfig: () =>
+            unreachable('ResourceLoaderService.effectiveSecurityConfig'),
+        } as unknown as ConstructorParameters<typeof AbacGuard>[2],
+        {} as unknown as ConstructorParameters<typeof AbacGuard>[3],
+        {} as unknown as ConstructorParameters<typeof AbacGuard>[4],
+      );
     });
 
     it('denies an unmarked route with 503 SECURITY_POLICY_UNAVAILABLE', async () => {
