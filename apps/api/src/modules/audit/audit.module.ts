@@ -3,6 +3,8 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { AuditInternalController } from './audit-internal.controller';
 import { AuditService } from './audit.service';
+import { AuditExplorerController } from './explorer.controller';
+import { AuditExplorerService } from './explorer.service';
 
 /**
  * **Audit Service** — `TechArch/01-components.md` §4.1 · FRD F02.
@@ -40,11 +42,34 @@ import { AuditService } from './audit.service';
  * is single-owner). The import below is that first importer; from here on
  * every other module gets `PrismaService` for free without touching the
  * composition root.
+ *
+ * ---
+ *
+ * ## Why `PolicyModule` is NOT in `imports`, even though two providers here
+ * ## inject from it
+ *
+ * `AuditExplorerService` injects `PdpClient` and `ResourceLoaderService`. It
+ * does not pull `PolicyModule` into `imports`, because `PolicyModule` already
+ * imports **this** module (its `AbacGuard` writes `access_attempt` events
+ * through `AuditService`), and adding the reverse edge would make the pair
+ * circular — resolvable only with
+ * `forwardRef()` on both sides, which trades a clear graph for a pair of
+ * lazily-resolved references that fail at runtime rather than at boot.
+ *
+ * It is unnecessary in any case: `PolicyModule` is `@Global()`, exactly so its
+ * providers are resolvable from the root injector for `AbacGuard`'s sake. A
+ * `@Global()` module's exports are visible to every module in the application
+ * once it has been registered, and `app.module.ts` registers it. So the
+ * dependency is real and satisfied; only the import edge is absent, and only
+ * because adding it would create a cycle that solves nothing.
+ *
+ * `context-boot.e2e-spec.ts` compiles the whole `AppModule`, so if that ever
+ * stopped being true it would fail there rather than in production.
  */
 @Module({
   imports: [PrismaModule],
-  providers: [AuditService],
-  exports: [AuditService],
-  controllers: [AuditInternalController],
+  providers: [AuditService, AuditExplorerService],
+  exports: [AuditService, AuditExplorerService],
+  controllers: [AuditInternalController, AuditExplorerController],
 })
 export class AuditModule {}
