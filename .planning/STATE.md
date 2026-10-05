@@ -3,15 +3,15 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-04-PLAN.md (runnable stack, court IdP realm, idempotent seed)
-last_updated: "2026-10-05T14:25:58.672Z"
-last_activity: "2026-10-05 — Wave 3 complete: 01-04 (stack up behind one TLS origin, real TOTP MFA, idempotent seed) and 01-05 (audit write path)"
+stopped_at: Completed 01-06-PLAN.md (real OIDC identity, sessions, entitlement resolution)
+last_updated: "2026-10-05T20:34:14.372Z"
+last_activity: "2026-10-05 — Wave 4: 01-06 landed (real OIDC login against Keycloak with TOTP MFA, session revocation, grant-only entitlements)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 5
-  percent: 33
+  completed_plans: 6
+  percent: 40
 ---
 
 # Project State
@@ -26,25 +26,25 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 ## Current Position
 
 Phase: 1 of 8 (Core Identity, Case Model, Audit & Security Baseline)
-Plan: 5 of 15 complete (wave 3 done: 01-04 and 01-05 both landed)
+Plan: 6 of 15 complete (wave 4: 01-06 landed; 01-07 next)
 Status: Executing
-Last activity: 2026-10-05 — Wave 3 complete: 01-04 (stack up behind one TLS origin, real TOTP MFA, idempotent seed) and 01-05 (audit write path)
+Last activity: 2026-10-05 — Wave 4: 01-06 landed (real OIDC login against Keycloak with TOTP MFA, session revocation, grant-only entitlements)
 
-Progress: [███░░░░░░░] 33%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 5
-- Average duration: 46 min
-- Total execution time: 3.9 hours
+- Total plans completed: 6
+- Average duration: 55 min
+- Total execution time: 5.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| Phase 01 | 5 | 231 min | 46 min |
+| Phase 01 | 6 | 328 min | 55 min |
 
 **Per-plan detail:**
 
@@ -55,13 +55,15 @@ Progress: [███░░░░░░░] 33%
 | 01-03 | 41 min | 3 | 13 |
 | 01-04 | 95 min | 3 | 18 |
 | 01-05 | 38 min | 3 | 13 |
+| 01-06 | 97 min | 3 | 23 |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (15 min), 01-02 (42 min), 01-03 (41 min), 01-04 (95 min), 01-05 (38 min)
-- Trend: 01-04 is the outlier — infrastructure plans absorb environment drift (two withdrawn images, host DNS settings, three mis-specified healthchecks) that code-only plans do not
+- Last 5 plans: 01-02 (42 min), 01-03 (41 min), 01-04 (95 min), 01-05 (38 min), 01-06 (97 min)
+- Trend: 01-04 and 01-06 are the outliers, for the same underlying reason — both integrate against live external systems. 01-06's time went almost entirely into five real defects (ACR alias, RFC 9207 iss, ioredis readiness, worker CA trust, cross-suite TOTP reuse) that no amount of unit testing would have surfaced, because each lived in the gap between what the IdP documents and what it emits.
 
 *Updated after each plan completion*
+| Phase 01 P06 | 97 min | 3 tasks | 23 files |
 
 ## Accumulated Context
 
@@ -102,6 +104,12 @@ Recent decisions affecting current work:
 - [Phase 01]: pgcrypto is created in `public` at cluster init because CREATE EXTENSION with no SCHEMA clause lands it wherever the creating session's search_path points, making its location depend on the connection string (psql vs Prisma's ?schema=platform)
 - [Phase 01]: Keycloak realm import has three non-obvious constraints, each documented inline: RealmRepresentation rejects unknown root keys outright, AUTHENTICATION_FLOW.DESCRIPTION is VARCHAR(255), and client minimum.acr.value fails the import-time validator even when valid
 - [Phase 01]: dns_search ['.'] on every Compose service — the sandbox host's ndots:5 and cluster.local search list are copied into containers and break short-name resolution intermittently (cached names still answer), presenting as ENOTFOUND for a healthy service on the same network
+- [Phase 01]: ACR aliases are resolved through the realm's acr.loa.map rather than parsed as numbers — the browser flow emits acr:'otp' with NO amr claim, so the obvious Number(acr)>=2 test yields NaN>=2 and rejects every genuine MFA login; it fails closed, but the tempting repair ('any non-empty acr counts') inverts that and admits the acr:'1' direct-grant token
+- [Phase 01]: An ACR value naming an RFC 8176 second factor is read as evidence of that factor, because acr.loa.map is NOT published in discovery (only the unlinked acr_values_supported ['otp','0','2']); scoped narrowly so numerics are still scored first and an unrecognised vendor alias still denies
+- [Phase 01]: Every redirect query parameter is forwarded to the token exchange — Keycloak advertises authorization_response_iss_parameter_supported, so RFC 9207 iss validation is mandatory and passing only {code,state} fails every exchange with an error that reads like a bad credential
+- [Phase 01]: Authentication integration tests drive the REAL Keycloak with real TOTP rather than a mock; a mocked IdP built from the same assumptions as the implementation would have confirmed all five defects this plan found instead of catching them
+- [Phase 01]: IdentityModule is @Global() so the APP_GUARD registered in app.module.ts resolves SessionService without editing that single-owner file, preserving plan 01-01's composition-root rule
+- [Phase 01]: Entitlement cache invalidation and session revocation are a documented PAIR — invalidate-without-revoke leaves in-flight requests stale, and revoke-without-invalidate is worse because the user's NEW session resolves from a cache holding the old entitlements and looks like it worked
 
 ### Pending Todos
 
@@ -114,9 +122,10 @@ None yet.
 - ASM-05: TechArch 02a 5.2 and 03a 6.1 omit the ao_program_manager role that FRD/Y0a, FRD/F00 and CONTEXT all list. Phase 1 implements 10 roles following the FRD side; the source documents need reconciling — cheap now, expensive once production role assignments exist.
 - ASM-08 (from 01-05): the `docs/SCHEMA-NOTES.md` §7 `search_path` rule applies to EVERY future `platform.*` function, but the regression gate in migration `20260101000300` only covers `compute_audit_row_hash`. A later migration adding an unpinned function reintroduces the same production-breaking defect (`digest()` unresolvable under `search_path=platform`, which aborts every audit write and therefore every audited domain write) with no automated catch. Worth a generic lint over `pg_proc.proconfig` in a later assurance plan.
 - ASM-09 (from 01-04): two pinned container images vanished mid-phase — `minio/minio` was withdrawn from Docker Hub entirely (quay.io now requires authentication for every tag) and `clamav/clamav:1.3.1_base` was delisted. MinIO is now `chainguard/minio` DIGEST-pinned, which is a stronger pin than a tag but tracks no upstream release line and will not receive patches without a deliberate bump. Nothing checks that the stack's images still resolve, so the next withdrawal surfaces as a failed build in whichever plan happens to run next. Worth a registry-reachability check in a later assurance plan.
+- ASM-10 (from 01-06): `SESSION_TOKEN_SECRET` is consumed by `SessionService` but is absent from `.env.example`, which plan 01-01 owns and this plan could not modify. Unset, each process derives an ephemeral HMAC key, so access tokens do not survive a restart and do not validate across multiple instances — correct for local development and fatal for any multi-instance deployment. It is logged loudly at boot, but nothing fails. A later plan that may edit `.env.example` should declare it (marked `[SECRET]`, resolved from the secrets manager in production), and the Compose `api` service should set it.
 
 ## Session Continuity
 
-Last session: 2026-10-05T14:25:58.671Z
-Stopped at: Completed 01-04-PLAN.md (runnable stack, court IdP realm, idempotent seed)
+Last session: 2026-10-05T20:34:14.372Z
+Stopped at: Completed 01-06-PLAN.md (real OIDC identity, sessions, entitlement resolution)
 Resume file: None
