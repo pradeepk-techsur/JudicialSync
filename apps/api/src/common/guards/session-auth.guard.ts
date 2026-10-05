@@ -45,6 +45,11 @@ import { ApiException } from '../errors/api-error';
 export class SessionAuthGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
+  // The signature is `Promise<boolean>` even though this stub body never
+  // awaits: plan 01-06 introduces real awaits here (JWT verification, the
+  // Redis session-cache lookup), and fixing the async contract now means that
+  // plan changes only this method's body, never its callers or its tests.
+  // eslint-disable-next-line @typescript-eslint/require-await
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // Handler metadata wins over controller metadata, so a controller can be
     // marked `@Public()` wholesale and a single route inside it still be

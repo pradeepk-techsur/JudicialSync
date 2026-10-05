@@ -58,6 +58,11 @@ import { ApiException } from '../errors/api-error';
 export class AbacGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
+  // The signature is `Promise<boolean>` even though this stub body never
+  // awaits: plan 01-07 introduces a real await here (the HTTP call to OPA),
+  // and fixing the async contract now means that plan changes only this
+  // method's body, never its callers or its tests.
+  // eslint-disable-next-line @typescript-eslint/require-await
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const targets = [context.getHandler(), context.getClass()];
 

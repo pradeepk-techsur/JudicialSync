@@ -11,6 +11,63 @@ import type { Request, Response } from 'express';
 import { ApiErrorBody, ApiException } from './api-error';
 
 /**
+ * Safe, stable responses for framework-originated failures — the ones Nest
+ * raises before or around a handler (a malformed body, an unmatched route, a
+ * payload over the limit), where no feature module authored an
+ * {@link ApiException} of its own.
+ *
+ * Codes follow the Y2 `{DOMAIN}_{CONDITION}` convention with a neutral domain,
+ * because the owning feature area is genuinely unknown at this layer. The
+ * messages are deliberately generic: the framework's own text can embed
+ * validation internals, class names and property paths, and this map exists
+ * precisely so none of that reaches a client.
+ */
+const GENERIC_RESPONSES: Readonly<Record<number, ApiErrorBody>> = {
+  [HttpStatus.BAD_REQUEST]: {
+    error_code: 'REQUEST_INVALID',
+    message: 'The request could not be understood',
+  },
+  [HttpStatus.UNAUTHORIZED]: {
+    error_code: 'AUTH_SESSION_EXPIRED',
+    message: 'Session expired; please sign in again',
+  },
+  [HttpStatus.FORBIDDEN]: {
+    error_code: 'AUTH_ACCESS_DENIED',
+    message: 'You are not authorized to perform this action',
+  },
+  [HttpStatus.NOT_FOUND]: {
+    error_code: 'RESOURCE_NOT_FOUND',
+    message: 'Resource not found or not accessible',
+  },
+  [HttpStatus.CONFLICT]: {
+    error_code: 'RESOURCE_INVALID_TRANSITION',
+    message: 'This action cannot be performed from the current state',
+  },
+  [HttpStatus.UNPROCESSABLE_ENTITY]: {
+    error_code: 'REQUEST_VALIDATION_FAILED',
+    message: 'The request failed validation',
+  },
+  [HttpStatus.PAYLOAD_TOO_LARGE]: {
+    error_code: 'REQUEST_PAYLOAD_TOO_LARGE',
+    message: 'The submitted content is too large',
+  },
+  [HttpStatus.TOO_MANY_REQUESTS]: {
+    error_code: 'REQUEST_RATE_LIMITED',
+    message: 'Too many requests; please retry shortly',
+  },
+  [HttpStatus.SERVICE_UNAVAILABLE]: {
+    error_code: 'SERVICE_UNAVAILABLE',
+    message: 'The service is temporarily unavailable',
+  },
+};
+
+/** Used for any status not in the map, and for every unanticipated throw. */
+const FALLBACK_RESPONSE: ApiErrorBody = {
+  error_code: 'INTERNAL_ERROR',
+  message: 'An internal error occurred',
+};
+
+/**
  * The global exception filter. Registered in `main.ts` via
  * `app.useGlobalFilters(new ApiExceptionFilter())`, it is the last thing
  * between a thrown error and the client, and it has exactly one job:
@@ -66,13 +123,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
       this.logger.warn(
         `${request.method} ${request.url} → ${status} ${exception.name}: ${exception.message}`,
       );
-      return {
-        status,
-        body: {
-          error_code: this.genericCodeFor(status),
-          message: this.genericMessageFor(status),
-        },
-      };
+      const generic = GENERIC_RESPONSES[status] ?? FALLBACK_RESPONSE;
+      return { status, body: { ...generic } };
     }
 
     // 3. Anything else is an unanticipated defect. Log it fully server-side;
@@ -85,65 +137,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
 
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
-      body: {
-        error_code: 'INTERNAL_ERROR',
-        message: 'An internal error occurred',
-      },
+      body: { ...FALLBACK_RESPONSE },
     };
-  }
-
-  /**
-   * Stable, non-leaking codes for framework-originated failures. These follow
-   * the Y2 `{DOMAIN}_{CONDITION}` convention with a neutral domain, since the
-   * owning feature area is unknown at this layer.
-   */
-  private genericCodeFor(status: number): string {
-    switch (status) {
-      case HttpStatus.BAD_REQUEST:
-        return 'REQUEST_INVALID';
-      case HttpStatus.UNAUTHORIZED:
-        return 'AUTH_SESSION_EXPIRED';
-      case HttpStatus.FORBIDDEN:
-        return 'AUTH_ACCESS_DENIED';
-      case HttpStatus.NOT_FOUND:
-        return 'RESOURCE_NOT_FOUND';
-      case HttpStatus.CONFLICT:
-        return 'RESOURCE_INVALID_TRANSITION';
-      case HttpStatus.UNPROCESSABLE_ENTITY:
-        return 'REQUEST_VALIDATION_FAILED';
-      case HttpStatus.PAYLOAD_TOO_LARGE:
-        return 'REQUEST_PAYLOAD_TOO_LARGE';
-      case HttpStatus.TOO_MANY_REQUESTS:
-        return 'REQUEST_RATE_LIMITED';
-      case HttpStatus.SERVICE_UNAVAILABLE:
-        return 'SERVICE_UNAVAILABLE';
-      default:
-        return 'INTERNAL_ERROR';
-    }
-  }
-
-  private genericMessageFor(status: number): string {
-    switch (status) {
-      case HttpStatus.BAD_REQUEST:
-        return 'The request could not be understood';
-      case HttpStatus.UNAUTHORIZED:
-        return 'Session expired; please sign in again';
-      case HttpStatus.FORBIDDEN:
-        return 'You are not authorized to perform this action';
-      case HttpStatus.NOT_FOUND:
-        return 'Resource not found or not accessible';
-      case HttpStatus.CONFLICT:
-        return 'This action cannot be performed from the current state';
-      case HttpStatus.UNPROCESSABLE_ENTITY:
-        return 'The request failed validation';
-      case HttpStatus.PAYLOAD_TOO_LARGE:
-        return 'The submitted content is too large';
-      case HttpStatus.TOO_MANY_REQUESTS:
-        return 'Too many requests; please retry shortly';
-      case HttpStatus.SERVICE_UNAVAILABLE:
-        return 'The service is temporarily unavailable';
-      default:
-        return 'An internal error occurred';
-    }
   }
 }

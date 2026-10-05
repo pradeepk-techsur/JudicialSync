@@ -1,0 +1,136 @@
+# =============================================================================
+# JudicialSync — core CI gate
+# =============================================================================
+#
+# OWNERSHIP: this file belongs to plan 01-01 and NO LATER PLAN EDITS IT.
+#
+# Phase 1 plans run partly in parallel, so a shared workflow file would be a
+# guaranteed merge conflict. Each additional gate therefore arrives as its own
+# SIBLING workflow rather than as a job appended here:
+#
+#   | workflow         | plan  | gate                                          |
+#   |------------------|-------|-----------------------------------------------|
+#   | ci.yml (this)    | 01-01 | lint · build · test                           |
+#   | policy.yml       | 01-02 | OPA/Rego policy bundle unit tests             |
+#   | e2e.yml          | 01-13 | end-to-end suite + axe-core accessibility gate|
+#   | assurance.yml    | 01-14 | negative-path assurance suite (criteria 1,3,4,5)|
+#
+# The split has a second benefit beyond conflict avoidance: each gate's failure
+# is self-describing in the GitHub checks list, so a red build names the
+# guarantee that broke rather than just "CI".
+#
+# SEPARATION OF DUTIES: `TechArch/05-tech-stack.md` §8.4 requires a
+# "separation-of-duties-enforced" release pipeline, and
+# `TechArch/04-security.md` §7.7 specifies the control: mandatory CODEOWNERS
+# review so that the author of a change is never its sole approver — the same
+# maker-checker principle the application enforces for entitlement grants.
+# A CODEOWNERS file plus branch protection must be configured on the
+# repository before pilot; neither is expressible in this workflow file.
+#
+# DEPLOYMENT IaC IS DEFERRED. Container-orchestration manifests and
+# infrastructure-as-code for the cloud target are in the Phase 1 CONTEXT's
+# Deferred Ideas and must not appear in this phase — they are unbuildable and
+# unverifiable until a real deployment target exists. Docker Compose is the
+# Phase 1 deployment target (plan 01-04).
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A new push to the same branch makes an in-flight run obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # `npm ci` installs devDependencies, which is required: the toolchain
+      # that lints, builds and tests this project (eslint, typescript, the
+      # Nest CLI, jest) all live there. Never add --omit=dev here.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --workspaces --if-present
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build --workspaces --if-present
+
+      # The build alone does not type-check test files, which are excluded
+      # from tsconfig.build.json. This catches a test that no longer compiles
+      # against changed source — a real failure that would otherwise only
+      # surface in the test job as a confusing runtime error.
+      - name: Type-check (including tests)
+        run: npx tsc --noEmit -p apps/api/tsconfig.json
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Includes the context-boot test (DI/route-wiring faults become a red
+      # run) and the fail-closed guard suite (proof that an unmarked route is
+      # denied). Neither requires a database.
+      - name: Test
+        run: npm run test --workspaces --if-present
+
+  # A standing assertion, cheap enough to run on every push, that no
+  # convenience bypass has been reintroduced into the guard chain. CONTEXT
+  # rejected each of these by name; this is threat T-01-03's mitigation.
+  no-auth-bypass:
+    name: No auth bypass flags
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assert no bypass/skip/disable auth flags exist
+        run: |
+          if grep -rnE 'BYPASS|DEV_LOGIN|SKIP_AUTH|DISABLE_MFA' apps/api/src/; then
+            echo "::error::An authentication bypass flag was found in apps/api/src/."
+            echo "::error::CONTEXT rejects dev-login paths and MFA bypass flags: the bypass"
+            echo "::error::becomes the daily-exercised path and the real control goes unproven."
+            exit 1
+          fi
+          echo "No bypass flags present."
