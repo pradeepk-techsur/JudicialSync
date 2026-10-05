@@ -265,4 +265,61 @@ changes one side without the other will see real output here.
 
 ---
 
-*Owner: plan 01-03 · Phase 1 — Core Identity, Case Model, Audit & Security Baseline*
+## 7. `search_path` must be pinned on every `platform` function
+
+*Added by plan 01-05, which found this the hard way.*
+
+Migration `20260101000300_audit_hash_search_path` fixes a latent defect in
+`20260101000200`: `platform.compute_audit_row_hash` called `digest()`
+unqualified. `pgcrypto` installs into `public`, and the application's
+`DATABASE_URL` carries `?schema=platform`, so Prisma sets `search_path` to
+`platform` alone and the name did not resolve:
+
+```
+ERROR: function digest(bytea, unknown) does not exist
+```
+
+Because the trigger fires `BEFORE INSERT` on the transactional-outbox path,
+that failure rolled back the domain write with it. In production **no status
+change, ruling, custody transfer or designation change could have been saved
+at all** — the defect was total, not partial.
+
+**Why 01-03's tests passed anyway.** They exercise the chain through the raw
+`pg` driver, which ignores the `?schema=` parameter and leaves `search_path`
+at a default that includes `public`. The application connects through Prisma,
+which sets it. The harness and the application disagreed about a session
+setting, and nothing on either side mentioned it, so the disagreement was
+invisible. `apps/api/test/audit-write.e2e-spec.ts` now drives the write path
+through Prisma specifically, so the test connects the way the application
+does.
+
+**The rule for every future migration:** a function that an application with a
+pinned `search_path` will call must pin its own —
+
+```sql
+CREATE OR REPLACE FUNCTION platform.f(...) RETURNS ...
+SET search_path = pg_catalog, public      -- add `platform` only if it is needed
+AS $$ ... $$;
+```
+
+`pg_catalog` first prevents a caller who can create objects in an earlier
+schema from shadowing a built-in the function relies on. Inheriting the
+caller's `search_path` means depending on a connection string in a secrets
+manager for correctness.
+
+`20260101000300` ends with a `DO` block that calls the function under
+`search_path = platform` alone and fails the deploy if it cannot resolve, so a
+recurrence is caught at migrate time rather than in production.
+
+### Error-code addendum
+
+Codes defined by Phase 1 features beyond `FRD/Y2-errors.md`, which leaves
+feature-specific codes to the feature:
+
+| Code | Status | Owner | Meaning |
+|---|---|---|---|
+| `AUDIT_WRITE_DENIED` | 403 | 01-05 | `POST /api/v1/audit/events` called by anything other than a trusted internal service. `Y1a` marks the route "service-to-service only … not user-invokable", so a denial here is a category error rather than a missing entitlement — distinct from `AUDIT_READ_DENIED` (403), which means a real user lacks `audit_reader`. |
+
+---
+
+*Owner: plan 01-03 (§1–6) · plan 01-05 (§7) · Phase 1 — Core Identity, Case Model, Audit & Security Baseline*

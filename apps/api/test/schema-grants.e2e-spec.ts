@@ -39,7 +39,7 @@ import {
 /** PostgreSQL: insufficient_privilege. The contract for every grant denial. */
 const INSUFFICIENT_PRIVILEGE = '42501';
 
-jest.setTimeout(180_000); // container pull + start + three migrations
+jest.setTimeout(180_000); // container pull + start + migrations
 
 interface PgError extends Error {
   code?: string;

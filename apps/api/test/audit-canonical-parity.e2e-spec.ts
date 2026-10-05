@@ -52,7 +52,7 @@ import {
  * least useful true statement available.
  */
 
-jest.setTimeout(180_000); // container pull + start + three migrations
+jest.setTimeout(180_000); // container pull + start + migrations
 
 /** Fixed UUIDs — fixtures must be deterministic for the payload to be. */
 const ACTOR = '11111111-1111-4111-8111-111111111111';

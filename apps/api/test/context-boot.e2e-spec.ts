@@ -47,7 +47,7 @@ import {
  * database path at all. Once a later plan's feature module imports it, this
  * line becomes redundant but stays harmless.
  */
-jest.setTimeout(180_000); // container pull + start + three migrations
+jest.setTimeout(180_000); // container pull + start + migrations
 
 describe('Application context boot (e2e)', () => {
   let app: INestApplication;

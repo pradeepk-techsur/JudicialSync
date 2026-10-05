@@ -41,6 +41,7 @@ const MIGRATIONS = [
   '20260101000000_platform_schema',
   '20260101000100_append_only_grants',
   '20260101000200_audit_hash_chain',
+  '20260101000300_audit_hash_search_path',
 ] as const;
 
 /** Local-development credentials from `infra/db/init/01-roles.sql`. */
@@ -92,7 +93,7 @@ function psql(
 }
 
 /**
- * Start PostgreSQL 15, create the two roles, and apply all three migrations in
+ * Start PostgreSQL 15, create the two roles, and apply every migration in
  * order.
  *
  * The role script normally runs from `/docker-entrypoint-initdb.d/` at cluster
