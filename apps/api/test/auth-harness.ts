@@ -60,7 +60,7 @@ export const REDIRECT_URI =
  * Resolved once, lazily, via `docker inspect`, and overridable by env for a
  * CI runner whose networking differs.
  */
-let discovered: { database: string; redis: string } | undefined;
+let discovered: { database: string; admin: string; redis: string } | undefined;
 
 function serviceIp(container: string): string | undefined {
   try {
@@ -80,7 +80,7 @@ function serviceIp(container: string): string | undefined {
   }
 }
 
-function endpoints(): { database: string; redis: string } {
+function endpoints(): { database: string; admin: string; redis: string } {
   if (discovered !== undefined) return discovered;
 
   const dbIp = serviceIp('judicialsync-db-1') ?? '127.0.0.1';
@@ -90,12 +90,31 @@ function endpoints(): { database: string; redis: string } {
     database:
       process.env.TEST_DATABASE_URL ??
       `postgresql://app_rw:app_rw_local_dev@${dbIp}:5432/judicialsync?schema=platform`,
+    admin:
+      process.env.TEST_MIGRATION_DATABASE_URL ??
+      `postgresql://app_dba:app_dba_local_dev@${dbIp}:5432/judicialsync?schema=platform`,
     redis: process.env.TEST_REDIS_URL ?? `redis://${redisIp}:6379`,
   };
   return discovered;
 }
 
 export const testDatabaseUrl = (): string => endpoints().database;
+
+/**
+ * The **administrative** connection (`app_dba`).
+ *
+ * Needed only to write the four configuration tables, on which `app_rw`
+ * deliberately holds SELECT alone (plan 01-03): the running application may
+ * read configuration and must not be able to author it. A test that wants to
+ * change a seeded config value is performing an administrative act and uses
+ * the administrative role, exactly as `prisma/seed.ts` does.
+ *
+ * Discovered the honest way — the first version of the cache-TTL test used
+ * `app_rw` and got `permission denied for table rule_package_versions`,
+ * which is the grant posture working correctly.
+ */
+export const testAdminDatabaseUrl = (): string => endpoints().admin;
+
 export const testRedisUrl = (): string => endpoints().redis;
 
 /**
@@ -218,25 +237,41 @@ const b64u = (b: Buffer): string => b.toString('base64url');
  * otherwise repeat a code. It costs wall-clock time and buys a suite whose
  * failures mean what they say.
  */
-const lastTotp = new Map<string, string>();
+/**
+ * Kept on `globalThis`, NOT in a module-level `const`.
+ *
+ * Jest gives every test FILE its own module registry, so a module-level map
+ * is reset between suites while the Keycloak container — which is what
+ * actually remembers spent codes — is not. The symptom was suites that each
+ * passed alone and failed when run together, with four logins rejected
+ * because a sibling suite had already spent that window's code seconds
+ * earlier. `globalThis` is per worker process, which is the scope that
+ * matches the shared IdP.
+ */
+const totpState: Map<string, string> = ((
+  globalThis as { __judicialsyncTotp?: Map<string, string> }
+).__judicialsyncTotp ??= new Map<string, string>());
 
 /** TOTP step, in milliseconds. The RFC 6238 default Keycloak uses. */
 const TOTP_STEP_MS = 30_000;
 
+/** Sleep into the next TOTP window, plus margin for container clock skew. */
+async function waitForNextWindow(): Promise<void> {
+  const msIntoWindow = Date.now() % TOTP_STEP_MS;
+  await new Promise((resolve) =>
+    setTimeout(resolve, TOTP_STEP_MS - msIntoWindow + 1_000),
+  );
+}
+
 async function freshTotp(username: string, secret: string): Promise<string> {
   let code = authenticator.generate(secret);
 
-  if (lastTotp.get(username) === code) {
-    // Sleep into the next window, plus a small margin for clock skew between
-    // this process and the Keycloak container.
-    const msIntoWindow = Date.now() % TOTP_STEP_MS;
-    await new Promise((resolve) =>
-      setTimeout(resolve, TOTP_STEP_MS - msIntoWindow + 1_000),
-    );
+  if (totpState.get(username) === code) {
+    await waitForNextWindow();
     code = authenticator.generate(secret);
   }
 
-  lastTotp.set(username, code);
+  totpState.set(username, code);
   return code;
 }
 
@@ -296,7 +331,7 @@ export async function browserLogin(
       code_challenge_method: 'S256',
     });
     if (options.acrValues !== undefined) params.set('acr_values', options.acrValues);
-    authorizeUrl = `${ISSUER}/protocol/openid-connect/auth?${params}`;
+    authorizeUrl = `${ISSUER}/protocol/openid-connect/auth?${params.toString()}`;
   }
 
   let res = await fetch(authorizeUrl, { redirect: 'manual' });
@@ -327,17 +362,40 @@ export async function browserLogin(
     if (action === undefined) {
       throw new Error('Keycloak returned no OTP form after the password step.');
     }
-    const code = await freshTotp(username, totp);
-    res = await fetch(action, {
-      method: 'POST',
-      redirect: 'manual',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        cookie: cookieHeader(),
-      },
-      body: new URLSearchParams({ otp: code, totp: code }),
-    });
-    store(res);
+    const submitOtp = async (code: string): Promise<Response> => {
+      const submitted = await fetch(action as string, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          cookie: cookieHeader(),
+        },
+        body: new URLSearchParams({ otp: code, totp: code }),
+      });
+      store(submitted);
+      return submitted;
+    };
+
+    res = await submitOtp(await freshTotp(username, totp));
+
+    // A 200 here means Keycloak re-rendered the OTP form instead of
+    // redirecting — it rejected the code. The overwhelmingly likely cause is
+    // that this window's code was already spent (Keycloak enforces one-time
+    // use), so wait out the window and present a genuinely new one.
+    //
+    // Retrying rather than failing is right because the rejection is an
+    // artefact of tests sharing one IdP, not a property of the system under
+    // test. It is bounded to a single retry so a real authentication failure
+    // still surfaces as one rather than looping.
+    if (res.status === 200) {
+      const retryBody = await res.text();
+      const retryAction = extractFormAction(retryBody);
+      if (retryAction !== undefined) {
+        action = retryAction;
+        await waitForNextWindow();
+        res = await submitOtp(await freshTotp(username, totp));
+      }
+    }
   }
 
   const location = res.headers.get('location');
@@ -359,6 +417,12 @@ export async function browserLogin(
   });
 
   return { code, state, nonce, codeVerifier, callbackParams };
+}
+
+/** The body of `GET /auth/authorize-url`. */
+interface AuthorizeUrlBody {
+  authorization_url: string;
+  state: string;
 }
 
 /** What a completed end-to-end login yields. */
@@ -394,17 +458,18 @@ export async function loginAs(
   const started = await request(app.getHttpServer())
     .get('/api/v1/auth/authorize-url')
     .expect(200);
+  const authorize = started.body as AuthorizeUrlBody;
 
   const { code, callbackParams } = await browserLogin(username, {
-    authorizationUrl: started.body.authorization_url,
-    state: started.body.state,
+    authorizationUrl: authorize.authorization_url,
+    state: authorize.state,
   });
 
   const response = await request(app.getHttpServer())
     .post('/api/v1/auth/login')
     .send({
       identity_assertion: code,
-      state: started.body.state,
+      state: authorize.state,
       callback_params: callbackParams,
     });
 
@@ -433,13 +498,14 @@ export async function startLogin(
   const started = await request(app.getHttpServer())
     .get('/api/v1/auth/authorize-url')
     .expect(200);
+  const authorize = started.body as AuthorizeUrlBody;
 
   const { code, callbackParams } = await browserLogin(username, {
-    authorizationUrl: started.body.authorization_url,
-    state: started.body.state,
+    authorizationUrl: authorize.authorization_url,
+    state: authorize.state,
   });
 
-  return { code, state: started.body.state, callbackParams };
+  return { code, state: authorize.state, callbackParams };
 }
 
 /**

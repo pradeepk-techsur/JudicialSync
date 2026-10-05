@@ -152,16 +152,20 @@ describe('auth-session: issuance, revocation and rotation (e2e)', () => {
         .send({ refresh_token });
 
       expect(rotated.status).toBe(200);
-      expect(typeof rotated.body.session_token).toBe('string');
-      expect(rotated.body.refresh_token).not.toBe(refresh_token);
+      const next = rotated.body as {
+        session_token: string;
+        refresh_token: string;
+      };
+      expect(typeof next.session_token).toBe('string');
+      expect(next.refresh_token).not.toBe(refresh_token);
 
       // The new access token works.
-      expect((await getEntitlements(rotated.body.session_token)).status).toBe(200);
+      expect((await getEntitlements(next.session_token)).status).toBe(200);
 
       // The new refresh token works.
       const again = await request(app.getHttpServer())
         .post('/api/v1/auth/refresh')
-        .send({ refresh_token: rotated.body.refresh_token });
+        .send({ refresh_token: next.refresh_token });
       expect(again.status).toBe(200);
     });
 
@@ -194,9 +198,10 @@ describe('auth-session: issuance, revocation and rotation (e2e)', () => {
         .post('/api/v1/auth/refresh')
         .send({ refresh_token: first.refresh_token })
         .expect(200);
+      const rotatedToken = (rotated.body as { session_token: string }).session_token;
 
       // The rotated-away token still works at this point.
-      expect((await getEntitlements(rotated.body.session_token)).status).toBe(200);
+      expect((await getEntitlements(rotatedToken)).status).toBe(200);
 
       // Replay the ALREADY-SPENT token. Either an attacker is replaying a
       // stolen token or the real user is replaying one an attacker already
@@ -210,7 +215,7 @@ describe('auth-session: issuance, revocation and rotation (e2e)', () => {
 
       // EVERY session for the user is now dead, including the one the
       // legitimate rotation had just produced.
-      expect((await getEntitlements(rotated.body.session_token)).status).toBe(401);
+      expect((await getEntitlements(rotatedToken)).status).toBe(401);
 
       const { rows } = await db.query<{ n: string }>(
         `SELECT count(*)::text AS n FROM platform.sessions
