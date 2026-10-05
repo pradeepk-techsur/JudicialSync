@@ -499,6 +499,428 @@ describe('cases-api: the shared case model (e2e)', () => {
   });
 
   // =========================================================================
+  // THE CHILD RESOURCES — proceedings, hearings, parties, docket events,
+  // document references
+  // =========================================================================
+
+  describe('the full case graph', () => {
+    it('creates proceeding → hearing → party → docket event → document reference, each audited once', async () => {
+      if (!available) return;
+
+      const created = await api(app, clerkToken).post(
+        '/api/v1/cases',
+        createCaseBody(),
+      );
+      expect(created.status).toBe(201);
+      const caseId = created.body.case.id as string;
+      const base = `/api/v1/cases/${caseId}`;
+
+      // --- proceeding ------------------------------------------------------
+      const proceeding = await api(app, clerkToken).post(`${base}/proceedings`, {
+        proceeding_type: 'trial',
+      });
+      expect(proceeding.status).toBe(201);
+      expect(Object.keys(proceeding.body.proceeding).sort()).toEqual([
+        'case_id',
+        'id',
+        'proceeding_type',
+        'status',
+      ]);
+      expect(proceeding.body.proceeding).toMatchObject({
+        case_id: caseId,
+        proceeding_type: 'trial',
+        status: 'open',
+      });
+      const proceedingId = proceeding.body.proceeding.id as string;
+
+      // --- hearing ---------------------------------------------------------
+      const scheduledAt = new Date(Date.now() + 86_400_000).toISOString();
+      const hearing = await api(app, clerkToken).post(
+        `${base}/proceedings/${proceedingId}/hearings`,
+        { scheduled_at: scheduledAt, hearing_type: 'pretrial_conference' },
+      );
+      expect(hearing.status).toBe(201);
+      expect(hearing.body.hearing).toMatchObject({
+        proceeding_id: proceedingId,
+        scheduled_at: scheduledAt,
+        hearing_type: 'pretrial_conference',
+      });
+      const hearingId = hearing.body.hearing.id as string;
+
+      const heldAt = new Date().toISOString();
+      const held = await api(app, clerkToken).patch(
+        `${base}/proceedings/${proceedingId}/hearings/${hearingId}`,
+        { held_at: heldAt },
+      );
+      expect(held.status).toBe(200);
+      expect(held.body.hearing.held_at).toBe(heldAt);
+
+      // --- party -----------------------------------------------------------
+      const party = await api(app, clerkToken).post(`${base}/parties`, {
+        party_name: 'Marisol Vega',
+        party_role: 'counsel',
+      });
+      expect(party.status).toBe(201);
+      expect(party.body.party).toMatchObject({
+        case_id: caseId,
+        party_name: 'Marisol Vega',
+        party_role: 'counsel',
+        source_system: 'manual',
+        status: 'active',
+      });
+      const partyId = party.body.party.id as string;
+
+      // --- docket event ----------------------------------------------------
+      const eventDate = new Date().toISOString();
+      const event = await api(app, clerkToken).post(`${base}/docket-events`, {
+        event_code: 'MOT',
+        event_description: 'Motion in limine filed',
+        event_date: eventDate,
+      });
+      expect(event.status).toBe(201);
+      expect(Object.keys(event.body.docket_event).sort()).toEqual([
+        'case_id',
+        'event_code',
+        'event_date',
+        'event_description',
+        'id',
+        'locally_modified',
+        'source_identifier',
+        'source_system',
+      ]);
+      const eventId = event.body.docket_event.id as string;
+
+      // --- document reference ----------------------------------------------
+      const document = await api(app, clerkToken).post(
+        `${base}/document-references`,
+        {
+          document_title: 'Motion in limine',
+          storage_pointer: 's3://judicialsync-files/test/motion.pdf',
+        },
+      );
+      expect(document.status).toBe(201);
+      expect(document.body.document_reference).toMatchObject({
+        case_id: caseId,
+        document_title: 'Motion in limine',
+        source_system: 'manual',
+      });
+      const documentId = document.body.document_reference.id as string;
+
+      // --- each write produced exactly the audit events it should ----------
+      //
+      // `FRD/Y1a-api-shared.md`: "All mutating endpoints emit an audit event
+      // (F02) unless explicitly marked read-only." Counted per object rather
+      // than in aggregate, so a missing event names the entity it belongs to.
+      expect(await auditEventsFor(db, 'proceedings', proceedingId)).toHaveLength(1);
+      expect(await auditEventsFor(db, 'parties', partyId)).toHaveLength(1);
+      expect(await auditEventsFor(db, 'docket_events', eventId)).toHaveLength(1);
+      expect(
+        await auditEventsFor(db, 'document_references', documentId),
+      ).toHaveLength(1);
+      // Two for the hearing: created, then marked held.
+      expect(await auditEventsFor(db, 'hearings', hearingId)).toHaveLength(2);
+
+      // --- and the context endpoint sees all of it -------------------------
+      const context = await api(app, clerkToken).get(`${base}/context`);
+      expect(context.body.proceedings).toHaveLength(1);
+      expect(context.body.hearings).toHaveLength(1);
+      expect(
+        (context.body.parties as Array<{ id: string }>).map((p) => p.id),
+      ).toContain(partyId);
+    });
+  });
+
+  // =========================================================================
+  // PROVENANCE — the rules Phase 3's adapter will inherit
+  // =========================================================================
+
+  describe('provenance', () => {
+    let caseId = '';
+    let base = '';
+
+    beforeAll(async () => {
+      if (!available) return;
+      const created = await api(app, clerkToken).post(
+        '/api/v1/cases',
+        createCaseBody(),
+      );
+      caseId = created.body.case.id as string;
+      base = `/api/v1/cases/${caseId}`;
+    });
+
+    it('a manual docket event gets source_system "manual" and a generated identifier', async () => {
+      if (!available) return;
+
+      const response = await api(app, clerkToken).post(`${base}/docket-events`, {
+        event_code: 'ORD',
+        event_date: new Date().toISOString(),
+      });
+
+      expect(response.status).toBe(201);
+      const event = response.body.docket_event as Record<string, unknown>;
+      expect(event.source_system).toBe('manual');
+      // NOT NULL with UNIQUE (source_system, source_identifier): the
+      // constraint does not care that there is no upstream system to
+      // identify, so a manual event needs one anyway.
+      expect(typeof event.source_identifier).toBe('string');
+      expect(event.source_identifier).toMatch(
+        new RegExp(`^manual:${caseId}:[0-9a-f-]{36}$`),
+      );
+      expect(event.locally_modified).toBe(false);
+    });
+
+    it('a non-manual event without source_identifier → 422 CASE_EVENT_MISSING_SOURCE', async () => {
+      if (!available) return;
+
+      const response = await api(app, clerkToken).post(`${base}/docket-events`, {
+        source_system: 'cmecf',
+        event_code: 'IND',
+        event_date: new Date().toISOString(),
+      });
+
+      // The exact code and message from `FRD/F01` Error States. Enforced now,
+      // before Phase 3's adapter exists, because an adapter written against an
+      // API that accepts the omission will send it — and those identifiers are
+      // what conflict detection later has to match on.
+      expect(response.status).toBe(422);
+      expect(response.body).toMatchObject({
+        error_code: 'CASE_EVENT_MISSING_SOURCE',
+        message: 'Imported docket events must include a source identifier',
+      });
+    });
+
+    it('two events sharing (source_system, source_identifier) → 409', async () => {
+      if (!available) return;
+
+      const identifier = `cmecf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const body = {
+        source_system: 'cmecf',
+        source_identifier: identifier,
+        event_code: 'ARR',
+        event_date: new Date().toISOString(),
+      };
+
+      const first = await api(app, clerkToken).post(`${base}/docket-events`, body);
+      expect(first.status).toBe(201);
+
+      const second = await api(app, clerkToken).post(`${base}/docket-events`, body);
+
+      // This constraint is Phase 3's idempotency key: a re-delivered CM/ECF
+      // event lands once because the DATABASE refuses the second, not because
+      // an adapter remembered to check.
+      expect(second.status).toBe(409);
+      expect(second.body.error_code).toBe('CASE_EVENT_DUPLICATE');
+    });
+
+    it('editing a cmecf-sourced event flips locally_modified; editing a manual one does not', async () => {
+      if (!available) return;
+
+      // --- the synced record ----------------------------------------------
+      const synced = await api(app, clerkToken).post(`${base}/docket-events`, {
+        source_system: 'cmecf',
+        source_identifier: `cmecf-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        event_code: 'MOT',
+        event_description: 'As received from CM/ECF',
+        event_date: new Date().toISOString(),
+      });
+      expect(synced.status).toBe(201);
+      expect(synced.body.docket_event.locally_modified).toBe(false);
+
+      const editedSynced = await api(app, clerkToken).patch(
+        `${base}/docket-events/${synced.body.docket_event.id}`,
+        { event_description: 'Corrected locally by the clerk' },
+      );
+      expect(editedSynced.status).toBe(200);
+      // The record HAS an upstream version, and it now differs from it. This
+      // is the flag Phase 3's conflict logic reads.
+      expect(editedSynced.body.docket_event.locally_modified).toBe(true);
+
+      // --- the manual record ----------------------------------------------
+      const manual = await api(app, clerkToken).post(`${base}/docket-events`, {
+        event_code: 'ORD',
+        event_description: 'Entered by the clerk',
+        event_date: new Date().toISOString(),
+      });
+
+      const editedManual = await api(app, clerkToken).patch(
+        `${base}/docket-events/${manual.body.docket_event.id}`,
+        { event_description: 'Corrected by the clerk' },
+      );
+      expect(editedManual.status).toBe(200);
+      // A manual record has no upstream version. "Locally modified" relative
+      // to nothing would tell Phase 3 there is a divergence to reconcile on a
+      // record that has no counterpart.
+      expect(editedManual.body.docket_event.locally_modified).toBe(false);
+    });
+
+    it('filters docket events by date range', async () => {
+      if (!available) return;
+
+      const old = new Date(Date.now() - 400 * 86_400_000).toISOString();
+      const recent = new Date(Date.now() - 2 * 86_400_000).toISOString();
+
+      await api(app, clerkToken).post(`${base}/docket-events`, {
+        event_code: 'OLD',
+        event_date: old,
+      });
+      await api(app, clerkToken).post(`${base}/docket-events`, {
+        event_code: 'NEW',
+        event_date: recent,
+      });
+
+      const windowStart = new Date(Date.now() - 30 * 86_400_000).toISOString();
+      const windowEnd = new Date(Date.now() + 86_400_000).toISOString();
+      const response = await api(app, clerkToken).get(
+        `${base}/docket-events?date_from=${encodeURIComponent(windowStart)}&date_to=${encodeURIComponent(windowEnd)}`,
+      );
+
+      expect(response.status).toBe(200);
+      const codes = (
+        response.body.docket_events as Array<{ event_code: string }>
+      ).map((e) => e.event_code);
+      expect(codes).toContain('NEW');
+      expect(codes).not.toContain('OLD');
+    });
+  });
+
+  // =========================================================================
+  // DESIGNATION INHERITANCE — a sealed case's children are sealed
+  // =========================================================================
+
+  describe('child collections inherit the parent case\u2019s designation', () => {
+    it('clerk_case_admin reading a sealed case\u2019s proceedings → 403 AUTH_DESIGNATION_DENIED', async () => {
+      if (!available) return;
+
+      const response = await api(app, clerkToken).get(
+        `/api/v1/cases/${SEED.cases.sealed}/proceedings`,
+      );
+
+      // There is no designation logic in `proceedings.controller.ts`. The
+      // denial comes from `@Resource({..., caseIdParam: 'id'})`: plan 01-07's
+      // loader resolves the proceeding through its owning case and adopts that
+      // case's active designations, so the PDP weighs the seal.
+      //
+      // 403 rather than 404 because the clerk holds `case_read` and is in
+      // scope for the court — the case's existence is already legitimately
+      // known to them, which is `FRD/Y2-errors.md` principle 3's
+      // designation-denied side.
+      expect(response.status).toBe(403);
+      expect(response.body.error_code).toBe('AUTH_DESIGNATION_DENIED');
+      expect(response.body).not.toHaveProperty('proceedings');
+    });
+
+    it('the same inheritance applies to docket events and parties', async () => {
+      if (!available) return;
+
+      for (const path of ['docket-events', 'parties', 'document-references']) {
+        const response = await api(app, clerkToken).get(
+          `/api/v1/cases/${SEED.cases.sealed}/${path}`,
+        );
+        expect([403, 404]).toContain(response.status);
+        expect(response.body).not.toHaveProperty(path.replace('-', '_'));
+      }
+    });
+  });
+
+  // =========================================================================
+  // PROCEEDING CLOSURE, NOT DELETION
+  // =========================================================================
+
+  describe('a proceeding is closed, never removed', () => {
+    it('closing succeeds, and the stubbed activity probe gates the removal-shaped path', async () => {
+      if (!available) return;
+
+      const created = await api(app, clerkToken).post(
+        '/api/v1/cases',
+        createCaseBody(),
+      );
+      const caseId = created.body.case.id as string;
+      const base = `/api/v1/cases/${caseId}`;
+
+      const proceeding = await api(app, clerkToken).post(`${base}/proceedings`, {
+        proceeding_type: 'motion_hearing',
+      });
+      const proceedingId = proceeding.body.proceeding.id as string;
+
+      // --- `closed` always succeeds, activity or not ----------------------
+      //
+      // `FRD/F01` Validation: a proceeding with activity "may only be marked
+      // `closed`". So closure must NEVER be the thing the probe blocks — it is
+      // the lawful outcome the rule steers toward.
+      const closed = await api(app, clerkToken).patch(
+        `${base}/proceedings/${proceedingId}/status`,
+        { status: 'closed' },
+      );
+      expect(closed.status).toBe(200);
+      expect(closed.body.proceeding.status).toBe('closed');
+
+      // The row is still there. "Closed" is not "gone".
+      const list = await api(app, clerkToken).get(`${base}/proceedings`);
+      expect(
+        (list.body.proceedings as Array<{ id: string }>).map((p) => p.id),
+      ).toContain(proceedingId);
+    });
+
+    it('CASE_PROCEEDING_IN_USE is reachable with an activity-reporting probe', async () => {
+      if (!available) return;
+
+      // The rule is written in its final form; its DATA SOURCE arrives in
+      // Phase 5 (`exhibits`) and Phase 7 (`defendant_trackers`). Overriding
+      // the probe is how the path is exercised today, and it is also exactly
+      // the change those phases make — the provider, not the service.
+      const { ProceedingsService: Service } = await import(
+        '../src/modules/case-context/proceedings.service'
+      );
+      const service = app.get(Service);
+      const probe = (service as unknown as {
+        activity: { hasActivity(id: string): Promise<boolean> };
+      }).activity;
+      const original = probe.hasActivity.bind(probe);
+      probe.hasActivity = async () => true;
+
+      try {
+        const created = await api(app, clerkToken).post(
+          '/api/v1/cases',
+          createCaseBody(),
+        );
+        const caseId = created.body.case.id as string;
+        const base = `/api/v1/cases/${caseId}`;
+
+        const proceeding = await api(app, clerkToken).post(
+          `${base}/proceedings`,
+          { proceeding_type: 'trial' },
+        );
+        const proceedingId = proceeding.body.proceeding.id as string;
+
+        // A removal-shaped transition, refused because the proceeding is in
+        // use. `superseded` is not a legal proceeding status, so the probe is
+        // consulted before the transition table and answers first.
+        const removal = await api(app, clerkToken).patch(
+          `${base}/proceedings/${proceedingId}/status`,
+          { status: 'open' },
+        );
+        expect(removal.status).toBe(409);
+        expect(removal.body).toMatchObject({
+          error_code: 'CASE_PROCEEDING_IN_USE',
+          message:
+            'Cannot delete a proceeding with existing exhibit or tracker activity',
+        });
+
+        // …and `closed` still succeeds, which is the half of the rule that
+        // matters most: activity constrains the DIRECTION, never the ability
+        // to wind a proceeding down.
+        const closed = await api(app, clerkToken).patch(
+          `${base}/proceedings/${proceedingId}/status`,
+          { status: 'closed' },
+        );
+        expect(closed.status).toBe(200);
+      } finally {
+        probe.hasActivity = original;
+      }
+    });
+  });
+
+  // =========================================================================
   // AUDIT COMPLETENESS
   // =========================================================================
 

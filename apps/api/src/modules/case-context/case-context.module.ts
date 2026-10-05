@@ -5,6 +5,15 @@ import { AuditModule } from '../audit/audit.module';
 import { CaseContextService } from './case-context.service';
 import { CasesController } from './cases.controller';
 import { CasesService } from './cases.service';
+import { DocketEventsController } from './docket-events.controller';
+import { DocumentReferencesController } from './document-references.controller';
+import { PartiesController } from './parties.controller';
+import { ProceedingsController } from './proceedings.controller';
+import {
+  PROCEEDING_ACTIVITY_PROBE,
+  Phase1ProceedingActivityProbe,
+  ProceedingsService,
+} from './proceedings.service';
 
 /**
  * **Case & Docket Context Service** —
@@ -29,11 +38,32 @@ import { CasesService } from './cases.service';
  *     `source_identifier` and `locally_modified` on every sync-eligible
  *     record. Conflict detection is Phase 3, but deferring the COLUMNS would
  *     force a backfill across live court records with unknowable provenance.
+ *
+ * ## The activity-probe binding
+ *
+ * {@link PROCEEDING_ACTIVITY_PROBE} resolves to the Phase 1 implementation,
+ * which reports no activity because neither `exhibits` (Phase 5) nor
+ * `defendant_trackers` (Phase 7) exists yet. **Phase 5 and Phase 7 replace
+ * the provider HERE** rather than editing `ProceedingsService` — the
+ * `FRD/F01` rule ("a proceeding with activity may only be marked `closed`")
+ * is already written and already tested; only its data source is missing. See
+ * `proceedings.service.ts` for why the rule ships before the data.
  */
 @Module({
   imports: [PrismaModule, AuditModule],
-  controllers: [CasesController],
-  providers: [CasesService, CaseContextService],
+  controllers: [
+    CasesController,
+    ProceedingsController,
+    PartiesController,
+    DocketEventsController,
+    DocumentReferencesController,
+  ],
+  providers: [
+    CasesService,
+    CaseContextService,
+    ProceedingsService,
+    { provide: PROCEEDING_ACTIVITY_PROBE, useClass: Phase1ProceedingActivityProbe },
+  ],
   // Exported for Phases 5–8. `CaseContextService` is the shared read surface
   // FRD/F01 step 8 requires those modules consume; nothing else in this module
   // is part of that contract.
