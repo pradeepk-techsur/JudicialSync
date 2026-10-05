@@ -3,15 +3,15 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-05-PLAN.md (audit write path, transactional outbox, hash parity)
-last_updated: "2026-10-05T13:44:02.788Z"
-last_activity: 2026-10-05 — Plan 01-05 complete (audit write path; TS/SQL hash parity proven, 01-03 search_path defect fixed)
+stopped_at: Completed 01-04-PLAN.md (runnable stack, court IdP realm, idempotent seed)
+last_updated: "2026-10-05T14:25:58.672Z"
+last_activity: "2026-10-05 — Wave 3 complete: 01-04 (stack up behind one TLS origin, real TOTP MFA, idempotent seed) and 01-05 (audit write path)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 4
-  percent: 27
+  completed_plans: 5
+  percent: 33
 ---
 
 # Project State
@@ -26,25 +26,25 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 ## Current Position
 
 Phase: 1 of 8 (Core Identity, Case Model, Audit & Security Baseline)
-Plan: 5 of 15 complete (wave 3; 01-04 running concurrently)
+Plan: 5 of 15 complete (wave 3 done: 01-04 and 01-05 both landed)
 Status: Executing
-Last activity: 2026-10-05 — Plan 01-05 complete (audit write path; TS/SQL hash parity proven, 01-03 search_path defect fixed)
+Last activity: 2026-10-05 — Wave 3 complete: 01-04 (stack up behind one TLS origin, real TOTP MFA, idempotent seed) and 01-05 (audit write path)
 
-Progress: [███░░░░░░░] 27%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 4
-- Average duration: 34 min
-- Total execution time: 2.3 hours
+- Total plans completed: 5
+- Average duration: 46 min
+- Total execution time: 3.9 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| Phase 01 | 4 | 136 min | 34 min |
+| Phase 01 | 5 | 231 min | 46 min |
 
 **Per-plan detail:**
 
@@ -53,12 +53,13 @@ Progress: [███░░░░░░░] 27%
 | 01-01 | 15 min | 3 | 33 |
 | 01-02 | 42 min | 3 | 14 |
 | 01-03 | 41 min | 3 | 13 |
+| 01-04 | 95 min | 3 | 18 |
 | 01-05 | 38 min | 3 | 13 |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01 (15 min), 01-02 (42 min), 01-03 (41 min), 01-05 (38 min)
-- Trend: stable — wave 3 matching wave 2's pace
+- Last 5 plans: 01-01 (15 min), 01-02 (42 min), 01-03 (41 min), 01-04 (95 min), 01-05 (38 min)
+- Trend: 01-04 is the outlier — infrastructure plans absorb environment drift (two withdrawn images, host DNS settings, three mis-specified healthchecks) that code-only plans do not
 
 *Updated after each plan completion*
 
@@ -92,6 +93,15 @@ Recent decisions affecting current work:
 - [Phase 01]: POST /audit/events fails closed on an unset INTERNAL_SERVICE_TOKEN and refuses any request carrying Authorization even with a valid service token, so a deployment slip cannot yield a world-writable audit log and a header-forwarding proxy cannot launder a user credential into a service call
 - [Phase 01]: actor_id supplied in an audit request body is a 422, never an ignored field: a caller that sent one believed it was setting the actor, and silently recording a different one produces an entry confidently wrong about who acted
 - [Phase 01]: Every platform.* function must pin SET search_path (docs/SCHEMA-NOTES.md §7); inheriting the caller's means depending on a connection string in a secrets manager for correctness
+- [Phase 01]: One TLS origin (judicialsync.localhost:8443) with a Compose network alias, so the OIDC issuer is byte-identical for the browser and the API container; the usual two-address local-dev setup makes every login fail with an error that looks like a token problem
+- [Phase 01]: The API trusts Caddy's internal CA via NODE_EXTRA_CA_CERTS and refuses to start if the copy fails; NODE_TLS_REJECT_UNAUTHORIZED is never set, and only the proxy publishes a host port so 'no plaintext path' is structural rather than asserted
+- [Phase 01]: MFA is enforced by conditioning OTP on Level of Authentication 2, NOT by promoting the built-in browser flow's OTP step — the built-in conditions on 'user configured', so a user with no OTP credential skips MFA entirely (verified: such a user is forced into enrolment, and acr_values downgrade requests do not skip the form)
+- [Phase 01]: The seed opens two connections — app_rw for operational data, app_dba for the four configuration tables app_rw holds SELECT-only on; widening app_rw instead would let the running application rewrite the designation→entitlement map the policy engine reads
+- [Phase 01]: Seed writes to user_roles/entitlement_grants/security_designations use an EMPTY update:{}; a substance-column payload raises 42501 on the SECOND boot only, so compose up would work once and then break (reproduced by sabotage, then restored)
+- [Phase 01]: jury_admin holds a role and zero entitlements as a permanent fixture — it is what makes 'role existence never implies access' falsifiable rather than asserted; granting it anything fails exactly one test in 01-14's assurance suite
+- [Phase 01]: pgcrypto is created in `public` at cluster init because CREATE EXTENSION with no SCHEMA clause lands it wherever the creating session's search_path points, making its location depend on the connection string (psql vs Prisma's ?schema=platform)
+- [Phase 01]: Keycloak realm import has three non-obvious constraints, each documented inline: RealmRepresentation rejects unknown root keys outright, AUTHENTICATION_FLOW.DESCRIPTION is VARCHAR(255), and client minimum.acr.value fails the import-time validator even when valid
+- [Phase 01]: dns_search ['.'] on every Compose service — the sandbox host's ndots:5 and cluster.local search list are copied into containers and break short-name resolution intermittently (cached names still answer), presenting as ENOTFOUND for a healthy service on the same network
 
 ### Pending Todos
 
@@ -103,9 +113,10 @@ None yet.
 - ASM-07: ROADMAP criterion 5 (all data encrypted at rest) will be only PARTIALLY evidenced in Phase 1 — object-store encryption is provable (MinIO SSE-S3 via HeadObject), but PostgreSQL at-rest encryption is a property of the deployment substrate whose IaC is deferred per CONTEXT. Must be satisfied by the deployment target before pilot.
 - ASM-05: TechArch 02a 5.2 and 03a 6.1 omit the ao_program_manager role that FRD/Y0a, FRD/F00 and CONTEXT all list. Phase 1 implements 10 roles following the FRD side; the source documents need reconciling — cheap now, expensive once production role assignments exist.
 - ASM-08 (from 01-05): the `docs/SCHEMA-NOTES.md` §7 `search_path` rule applies to EVERY future `platform.*` function, but the regression gate in migration `20260101000300` only covers `compute_audit_row_hash`. A later migration adding an unpinned function reintroduces the same production-breaking defect (`digest()` unresolvable under `search_path=platform`, which aborts every audit write and therefore every audited domain write) with no automated catch. Worth a generic lint over `pg_proc.proconfig` in a later assurance plan.
+- ASM-09 (from 01-04): two pinned container images vanished mid-phase — `minio/minio` was withdrawn from Docker Hub entirely (quay.io now requires authentication for every tag) and `clamav/clamav:1.3.1_base` was delisted. MinIO is now `chainguard/minio` DIGEST-pinned, which is a stronger pin than a tag but tracks no upstream release line and will not receive patches without a deliberate bump. Nothing checks that the stack's images still resolve, so the next withdrawal surfaces as a failed build in whichever plan happens to run next. Worth a registry-reachability check in a later assurance plan.
 
 ## Session Continuity
 
-Last session: 2026-10-05T13:44:02.786Z
-Stopped at: Completed 01-05-PLAN.md (audit write path, transactional outbox, hash parity)
+Last session: 2026-10-05T14:25:58.671Z
+Stopped at: Completed 01-04-PLAN.md (runnable stack, court IdP realm, idempotent seed)
 Resume file: None
