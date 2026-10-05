@@ -1,0 +1,474 @@
+{
+  "realm": "judicialsync",
+  "displayName": "JudicialSync (local court IdP)",
+  "enabled": true,
+  "sslRequired": "external",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "otpPolicyInitialCounter": 0,
+  "otpPolicyLookAheadWindow": 1,
+  "otpPolicyCodeReusable": false,
+  "otpSupportedApplications": [
+    "totpAppFreeOTPName",
+    "totpAppGoogleName",
+    "totpAppMicrosoftAuthenticatorName"
+  ],
+  "attributes": {
+    "acr.loa.map": "{\"otp\":2}",
+    "frontendUrl": "https://judicialsync.localhost:8443/auth",
+    "judicialsync.local-dev-warning": "LOCAL DEVELOPMENT ONLY. Every password and TOTP secret in this realm is published in docs/SEED-CREDENTIALS.md and committed to version control. Never import this realm into any environment reachable from outside a developer machine. TechArch/05-tech-stack.md 8.4 requires production to resolve all credentials from the secrets manager; a real court IdP is externally administered and this file would not exist there."
+  },
+  "browserFlow": "browser-mfa",
+  "directGrantFlow": "direct-grant-mfa",
+  "registrationFlow": "registration",
+  "resetCredentialsFlow": "reset credentials",
+  "clientAuthenticationFlow": "clients",
+  "dockerAuthenticationFlow": "docker auth",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "failureFactor": 5,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 604800,
+  "authenticationFlows": [
+    {
+      "alias": "browser-mfa",
+      "description": "Browser flow requiring TOTP. No path to a session without it.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-cookie",
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "identity-provider-redirector",
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "flowAlias": "browser-mfa-forms",
+          "requirement": "ALTERNATIVE",
+          "priority": 30,
+          "userSetupAllowed": false,
+          "autheticatorFlow": true
+        }
+      ]
+    },
+    {
+      "alias": "browser-mfa-forms",
+      "description": "Username/password followed by an OTP step gated on Level of Authentication 2.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "auth-username-password-form",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "flowAlias": "browser-mfa-otp",
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "autheticatorFlow": true
+        }
+      ]
+    },
+    {
+      "alias": "browser-mfa-otp",
+      "description": "OTP required at Level of Authentication 2.",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "conditional-level-of-authentication",
+          "authenticatorConfig": "browser-mfa-loa-2",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "auth-otp-form",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        }
+      ]
+    },
+    {
+      "alias": "direct-grant-mfa",
+      "description": "Direct grant flow with TOTP required.",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "authenticator": "direct-grant-validate-username",
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "direct-grant-validate-password",
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        },
+        {
+          "authenticator": "direct-grant-validate-otp",
+          "requirement": "REQUIRED",
+          "priority": 30,
+          "userSetupAllowed": false,
+          "autheticatorFlow": false
+        }
+      ]
+    }
+  ],
+  "authenticatorConfig": [
+    {
+      "alias": "browser-mfa-loa-2",
+      "config": {
+        "loa-condition-level": "2"
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "judicialsync-internal",
+      "name": "JudicialSync Platform Core (internal audience)",
+      "description": "Confidential client for internal court staff.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "secret": "judicialsync-local-dev-client-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "https://judicialsync.localhost:8443/*"
+      ],
+      "webOrigins": [
+        "https://judicialsync.localhost:8443"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://judicialsync.localhost:8443/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-judicialsync-internal",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "judicialsync-internal",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "court-code",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "court_code",
+            "claim.name": "court_code",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "judge",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Robert",
+      "lastName": "Hale",
+      "email": "robert.hale@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "NDCA"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "judge_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"63VXFAFVMVAI7SWUDGBP\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "law_clerk",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Ana",
+      "lastName": "Ibarra",
+      "email": "ana.ibarra@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "NDCA"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "law_clerk_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"NZWN3AOOZT2RVZJK5K4C\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "courtroom_deputy",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Maria",
+      "lastName": "Santos",
+      "email": "maria.santos@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "NDCA"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "courtroom_deputy_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"7GDHDSM7KDWYPW5ODMVK\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "clerk_case_admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "David",
+      "lastName": "Okafor",
+      "email": "david.okafor@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "NDCA"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "clerk_case_admin_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"N6EYBFKLT4HT7FQAKQVU\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "attorney_external",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Jordan",
+      "lastName": "Whitfield",
+      "email": "jordan.whitfield@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "NDCA"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "attorney_external_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"3CNQGC3VBCCVDJ3D2EO6\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "jury_admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Carla",
+      "lastName": "Jimenez",
+      "email": "carla.jimenez@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "NDCA"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "jury_admin_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"RVUKOJLAKJNXRVXTOR7D\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "court_admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Thomas",
+      "lastName": "Reyes",
+      "email": "thomas.reyes@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "NDCA"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "court_admin_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"V74MMRPX5TJLO2BFK4GM\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "ao_program_manager",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Lydia",
+      "lastName": "Brennan",
+      "email": "lydia.brennan@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "NDCA"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ao_program_manager_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"2XACDRLEWWHA2WCMNDXQ\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "system_admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Priya",
+      "lastName": "Nandan",
+      "email": "priya.nandan@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "SDNY"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "system_admin_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"XMEMVJKGXEGF53XYGMJS\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "security_officer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Samuel",
+      "lastName": "Adeyemi",
+      "email": "samuel.adeyemi@judicialsync.invalid",
+      "attributes": {
+        "court_code": [
+          "SDNY"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "security_officer_local_dev!1",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "seed-totp",
+          "secretData": "{\"value\":\"TEJLUPXWJ6ICNDPVS2WS\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    }
+  ]
+}
