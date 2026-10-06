@@ -324,7 +324,14 @@ export class AuthService implements OnModuleInit {
 
   /** `GET /auth/entitlements` — the caller's own computed access. */
   async entitlementsFor(principal: Principal): Promise<EntitlementsDto> {
-    return Promise.resolve(toEntitlementsDto(principal));
+    // The display name is a UI-only attribute (plan 01-13 shell), read from the
+    // user record plan 01-06 populates at login. Falls back to the user_id if a
+    // record is somehow missing rather than failing the whole call.
+    const user = await this.prisma.users.findUnique({
+      where: { id: principal.user_id },
+      select: { display_name: true },
+    });
+    return toEntitlementsDto(principal, user?.display_name ?? principal.user_id);
   }
 
   private async findUserBySubject(
@@ -427,10 +434,21 @@ export class AuthService implements OnModuleInit {
   }
 }
 
-/** Shape a `Principal` as the wire DTO. */
-export function toEntitlementsDto(principal: Principal): EntitlementsDto {
+/**
+ * Shape a `Principal` as the wire DTO.
+ *
+ * `displayName` is supplied separately because it is not on the `Principal`
+ * (which carries only authorization-relevant fields); it is a UI-only attribute
+ * read from the user record. Defaults to the user_id when not provided, which
+ * keeps the login-response path (where the name is not looked up) well-formed.
+ */
+export function toEntitlementsDto(
+  principal: Principal,
+  displayName?: string,
+): EntitlementsDto {
   return {
     user_id: principal.user_id,
+    display_name: displayName ?? principal.user_id,
     roles: principal.roles,
     scopes: principal.scopes,
     entitlements: principal.entitlements,

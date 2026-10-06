@@ -55,8 +55,8 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
               <>
                 <span data-testid="display-name">{principal.display_name}</span>{' '}
                 {principal.roles.map((role) => (
-                  <Tag key={`${role.role}-${role.court_id ?? ''}`} data-testid="role-tag">
-                    {role.role}
+                  <Tag key={`${role.role_name}-${role.court_id ?? ''}`} data-testid="role-tag">
+                    {role.role_name}
                   </Tag>
                 ))}{' '}
                 <Button type="button" onClick={() => void logout()} data-testid="sign-out" unstyled>

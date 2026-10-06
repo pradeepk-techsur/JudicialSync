@@ -349,7 +349,13 @@ services:
       OIDC_ISSUER_URL: https://judicialsync.localhost:8443/auth/realms/judicialsync
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-judicialsync-internal}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?OIDC_CLIENT_SECRET must be set — copy .env.example to .env}
-      OIDC_REDIRECT_URI: https://judicialsync.localhost:8443/api/v1/auth/callback
+      # The OIDC callback lands in the SPA at /login/callback (plan 01-13), NOT
+      # at an API path: plan 01-06's design has the FRONTEND handle the callback
+      # and POST {identity_assertion, state, callback_params} to /auth/login.
+      # It must NOT be under /auth/* — the Caddy proxy routes /auth/* to Keycloak
+      # — and this exact string is sent as redirect_uri on both the authorize
+      # request and the token exchange, so the two must match byte-for-byte.
+      OIDC_REDIRECT_URI: https://judicialsync.localhost:8443/login/callback
       PUBLIC_BASE_URL: https://judicialsync.localhost:8443
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}

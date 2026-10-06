@@ -11,8 +11,12 @@ import { visibleNavItems } from './shell/SideNav';
 /**
  * The Phase 1 route table.
  *
- * Routes: `/login`, `/auth/callback`, `/cases`, `/audit`, and `/` redirecting to
- * the first nav item the viewer can see (or showing the no-modules alert).
+ * Routes: `/login`, `/login/callback`, `/cases`, `/audit`, and `/` redirecting
+ * to the first nav item the viewer can see (or showing the no-modules alert).
+ *
+ * The OIDC callback is `/login/callback`, NOT `/auth/callback`: the Caddy proxy
+ * routes `/auth/*` to Keycloak, so a callback under `/auth/` would never reach
+ * the SPA. `OIDC_REDIRECT_URI` in docker-compose.yml points at this exact path.
  *
  * `/cases` and `/audit` ship here as PLACEHOLDER regions already wired into the
  * navigation — plan 01-15 mounts the real Case List and Audit Explorer screens.
@@ -29,7 +33,10 @@ export function AppRoutes(): JSX.Element {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/auth/callback" element={<CallbackPage />} />
+      {/* The OIDC callback lands HERE, in the SPA — not under /auth/*, which the
+          Caddy proxy routes to Keycloak. OIDC_REDIRECT_URI must point at this
+          exact path (docker-compose.yml). */}
+      <Route path="/login/callback" element={<CallbackPage />} />
 
       <Route
         path="/"

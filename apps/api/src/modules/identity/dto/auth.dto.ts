@@ -96,6 +96,15 @@ export interface AuthorizeUrlResponseDto {
  */
 export interface EntitlementsDto {
   user_id: string;
+  /**
+   * The signed-in user's human-readable name, for display in the UI shell.
+   *
+   * Added for plan 01-13: the authenticated shell must show "their name and
+   * role" (CONTEXT must-have), and `user_id` is a UUID. It is read from the
+   * `users.display_name` column that plan 01-06 already populates from the IdP
+   * assertion at login. It is display-only and carries no authority.
+   */
+  display_name: string;
   roles: RoleAssignment[];
   scopes: ScopeAttribute[];
   /**

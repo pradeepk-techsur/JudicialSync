@@ -76,17 +76,22 @@ const API_ERROR_BODY_SCHEMA = {
 const RESPONSE_SCHEMAS = {
   EntitlementsDto: {
     type: 'object',
-    required: ['user_id', 'roles', 'scopes', 'entitlements', 'mfa_satisfied'],
+    required: ['user_id', 'display_name', 'roles', 'scopes', 'entitlements', 'mfa_satisfied'],
     properties: {
       user_id: { type: 'string' },
+      display_name: {
+        type: 'string',
+        description: 'UI-only human-readable name; carries no authority.',
+      },
       roles: {
         type: 'array',
         items: {
           type: 'object',
-          required: ['role'],
+          required: ['role_name'],
           properties: {
-            role: { type: 'string' },
-            court_id: { type: 'string', nullable: true },
+            role_name: { type: 'string' },
+            court_id: { type: 'string' },
+            division_id: { type: 'string' },
           },
         },
       },
@@ -94,6 +99,7 @@ const RESPONSE_SCHEMAS = {
         type: 'array',
         items: {
           type: 'object',
+          required: ['scope_type'],
           properties: {
             scope_type: { type: 'string' },
             scope_id: { type: 'string' },

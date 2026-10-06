@@ -19,12 +19,17 @@ export type ApiErrorBody = {
 
 export type EntitlementsDto = {
     user_id: string;
+    /**
+     * UI-only human-readable name; carries no authority.
+     */
+    display_name: string;
     roles: Array<{
-        role: string;
-        court_id?: (string) | null;
+        role_name: string;
+        court_id?: string;
+        division_id?: string;
     }>;
     scopes: Array<{
-        scope_type?: string;
+        scope_type: string;
         scope_id?: string;
     }>;
     /**
