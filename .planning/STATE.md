@@ -3,14 +3,14 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-12-PLAN.md (Audit Explorer + BullMQ hash-chain verification job)
-last_updated: "2026-10-06T03:57:13.613Z"
+stopped_at: Completed 01-11-PLAN.md (configuration read path, retention/disposition no-auto-purge guard, key-access SoD, manual-fallback runbook)
+last_updated: "2026-10-06T04:08:57.917Z"
 last_activity: "2026-10-06 — Wave 6: 01-10 landed (secure file upload: content-sniffed allowlist, real ClamAV INSTREAM scan, AES256 S3-compatible store, byte round-trip proven against the live stack)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 10
+  completed_plans: 11
   percent: 53
 ---
 
@@ -66,6 +66,7 @@ Progress: [█████░░░░░] 53%
 *Updated after each plan completion*
 | Phase 01 P10 | 3h 40m | 3 tasks | 13 files |
 | Phase 01-core-identity-case-model-audit-security-baseline P12 | 95 min | 3 tasks | 14 files |
+| Phase 01 P11 | 83 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,9 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-09: Removal is a status transition, never a delete — proven at three layers (HTTP DELETE→404/405, no @Delete/.delete in source, raw DELETE FROM cases as app_rw→42501); duplicate case_number and duplicate docket source are caught from the Prisma P2002 unique violation, never pre-checked (a pre-check races, the constraint cannot)
 - [Phase 01]: 01-09: Full provenance ships now — source_system='manual'+generated source_identifier for manual entry, CASE_EVENT_MISSING_SOURCE for a non-manual event without one, locally_modified flipped ONLY on a PATCH of a synced record; zero conflict logic (Phase 3 owns it). Lifting a designation requires holding that designation's entitlement, because the loader resolves the target WITH its current designations
 - [Phase 01]: 01-09: CASE_DESIGNATION_DENIED is registered in abac.guard.ts's RESOURCE_REASON_OVERRIDES table (the sanctioned per-feature extension point) rather than special-cased in the handler; CASE_PROCEEDING_IN_USE ships in final form behind an injectable ProceedingActivityProbe (Phase 1 returns no-activity, Phases 5/7 rebind it) and is proven by a hermetic stub-probe unit test
+- [Phase 01]: 01-11: The configuration read path (CourtConfigService) has no default — a missing version is 500 CONFIG_NOT_FOUND and a malformed snapshot is 500 CONFIG_INVALID_SNAPSHOT, because a silent default would be an invisible return to the hardcoded constants CONTEXT rejected
+- [Phase 01]: 01-11: The record-destroying disposition capability is gated twice — the PDP answers 'may this principal confirm dispositions at all' and DispositionGuard answers 'is this a genuine self-named human confirmation' (rejects x-service-token); neither subsumes the other and automated purge is impossible by construction
+- [Phase 01]: 01-11: Key-access routes are self-scoped with a controller-level key_custodian check (security_officer only, not system_admin) producing 403 SECURITY_KEY_ACCESS_DENIED + an access_attempt audit — the specific code cannot come from the global AbacGuard without editing 01-07's file, and encryption_key is a capability with no resource attributes to weigh
 
 ### Pending Todos
 
@@ -144,9 +148,10 @@ None yet.
 - DEF-01 (from 01-07, full detail in the phase's `deferred-items.md`): the seeded `judge` CANNOT read the seeded sealed case, so the **positive** half of Phase 1 criterion 4 is not demonstrable from the seed as it stands. 01-04 gives `judge` a `case` scope row on the PLAIN case, and under 01-02's narrowing semantics one such row confines the principal to exactly the cases named — the sealed read is therefore denied on SCOPE, before designation is ever considered. Both plans are individually correct and were never checked against each other; neither plan's tests could have caught it (01-02 uses synthetic principals, 01-04 asserts rows exist rather than what they authorize). 01-07's guard suite adds the row in-test and asserts BOTH states, so the semantics stay pinned. One-row fix in `seed/identity.ts` recommended to 01-14. Do NOT "fix" it by removing the narrowing — that would let every case-scoped principal, including the Phase 4 external attorney, reach every case in their court.
 - DEF-02 (from 01-07, PRE-EXISTING, full detail in `deferred-items.md`): `INTERNAL_SERVICE_TOKEN` is absent from `docker-compose.yml`'s `api` environment, so BOTH internal service routes — 01-05's `POST /audit/events` and 01-07's `POST /security/policy-evaluate` — return 403 in the deployed stack. `ServiceTokenGuard` failing closed on an unset secret is correct behaviour, so the symptom is the control working over a config gap. Nothing caught it because the in-process suites set the variable themselves and structurally cannot observe what Compose forwards, making this a coverage gap as much as a configuration one. One-line fix (the `:?` required-secret form the other secrets already use) recommended to 01-14, ideally with a test that calls an internal route through the deployed container.
 - DEF-03 (01-09): ChainVerifier flags prev_hash breaks over the shared test DB; all genuine orphans are access_attempt rows (01-07), never 01-09 case writes. Shared-test-DB artefact, not a production defect. Detail in deferred-items.md; for 01-12/01-14.
+- DEF-03 (from 01-11): 01-06 SessionConfigService and 01-07 ResourceLoaderService.effectiveSecurityConfig still read rule_package_versions directly; switch to CourtConfigService.getEffective. RetentionService.callerMaySee reimplements the designation exclusion predicate inline (CaseContextService/01-04 is a stub); share one predicate once it lands. Recommended to 01-14.
 
 ## Session Continuity
 
-Last session: 2026-10-06T03:56:47.170Z
-Stopped at: Completed 01-12-PLAN.md (Audit Explorer + BullMQ hash-chain verification job)
+Last session: 2026-10-06T04:08:47.187Z
+Stopped at: Completed 01-11-PLAN.md (configuration read path, retention/disposition no-auto-purge guard, key-access SoD, manual-fallback runbook)
 Resume file: None
