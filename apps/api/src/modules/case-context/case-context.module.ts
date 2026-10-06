@@ -5,6 +5,14 @@ import { AuditModule } from '../audit/audit.module';
 import { CaseContextService } from './case-context.service';
 import { CasesController } from './cases.controller';
 import { CasesService } from './cases.service';
+import { DocketEventsController } from './docket-events.controller';
+import { PartiesController } from './parties.controller';
+import {
+  PROCEEDING_ACTIVITY_PROBE,
+  Phase1ProceedingActivityProbe,
+} from './proceeding-activity.probe';
+import { ProceedingsController } from './proceedings.controller';
+import { ProceedingsService } from './proceedings.service';
 
 /**
  * **Case & Docket Context Service** —
@@ -31,8 +39,21 @@ import { CasesService } from './cases.service';
  */
 @Module({
   imports: [PrismaModule, AuditModule],
-  controllers: [CasesController],
-  providers: [CasesService, CaseContextService],
+  controllers: [
+    CasesController,
+    ProceedingsController,
+    PartiesController,
+    DocketEventsController,
+  ],
+  providers: [
+    CasesService,
+    CaseContextService,
+    ProceedingsService,
+    // The activity probe seam. Phase 1 binds the no-activity implementation;
+    // Phases 5 (exhibits) and 7 (defendant trackers) rebind this token to a
+    // provider that queries their tables, and ProceedingsService never changes.
+    { provide: PROCEEDING_ACTIVITY_PROBE, useClass: Phase1ProceedingActivityProbe },
+  ],
   // Exported so Phases 5–8 read case context through this one surface — the
   // structural answer to Phase 1 criterion 2 (no shadow copy of case data).
   exports: [CaseContextService],

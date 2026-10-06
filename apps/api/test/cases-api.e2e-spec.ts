@@ -379,4 +379,209 @@ describe('cases-api: the case family over HTTP (e2e)', () => {
       expect(latest.rows[0].after_state).toMatchObject({ status: 'closed' });
     });
   });
+
+  // =========================================================================
+  // TASK 2 — proceedings, hearings, parties, docket events, document refs
+  // =========================================================================
+
+  /** Create a fresh case owned by the clerk and return its id. */
+  const freshCase = async (): Promise<string> => {
+    const res = await post('/api/v1/cases', clerkToken, validCaseBody());
+    expect(res.status).toBe(201);
+    return res.body.id as string;
+  };
+
+  describe('the case-child graph', () => {
+    it('creates proceeding → hearing → party → docket event → document reference, each audited', async () => {
+      if (!available) return;
+
+      const caseId = await freshCase();
+
+      // --- proceeding ---
+      const proc = await post(
+        `/api/v1/cases/${caseId}/proceedings`,
+        clerkToken,
+        { proceeding_type: 'pretrial' },
+      );
+      expect(proc.status).toBe(201);
+      expect(proc.body).toMatchObject({
+        case_id: caseId,
+        proceeding_type: 'pretrial',
+        status: 'open',
+      });
+      expect(await auditCount('proceedings', proc.body.id, 'status_change')).toBe(1);
+
+      // --- hearing ---
+      const hearing = await post(
+        `/api/v1/cases/${caseId}/proceedings/${proc.body.id}/hearings`,
+        clerkToken,
+        { scheduled_at: new Date().toISOString(), hearing_type: 'status_conference' },
+      );
+      expect(hearing.status).toBe(201);
+      expect(hearing.body).toMatchObject({
+        proceeding_id: proc.body.id,
+        hearing_type: 'status_conference',
+      });
+      expect(await auditCount('hearings', hearing.body.id, 'status_change')).toBe(1);
+
+      // --- party ---
+      const party = await post(`/api/v1/cases/${caseId}/parties`, clerkToken, {
+        party_name: 'Jane Counsel',
+        party_role: 'counsel',
+      });
+      expect(party.status).toBe(201);
+      expect(party.body).toMatchObject({
+        case_id: caseId,
+        party_role: 'counsel',
+        source_system: 'manual',
+      });
+      expect(await auditCount('parties', party.body.id, 'status_change')).toBe(1);
+
+      // --- docket event (manual) ---
+      const event = await post(`/api/v1/cases/${caseId}/docket-events`, clerkToken, {
+        event_code: 'MOT',
+        event_description: 'Motion filed',
+        event_date: new Date().toISOString(),
+      });
+      expect(event.status).toBe(201);
+      expect(event.body.source_system).toBe('manual');
+      expect(event.body.source_identifier).not.toBeNull();
+      expect(String(event.body.source_identifier)).toContain('manual:');
+      expect(await auditCount('docket_events', event.body.id, 'status_change')).toBe(1);
+
+      // --- document reference ---
+      const doc = await post(
+        `/api/v1/cases/${caseId}/document-references`,
+        clerkToken,
+        { document_title: 'Charging document' },
+      );
+      expect(doc.status).toBe(201);
+      expect(doc.body).toMatchObject({ case_id: caseId, document_title: 'Charging document' });
+      expect(await auditCount('document_references', doc.body.id, 'status_change')).toBe(1);
+
+      // The shared read surface returns the whole graph.
+      const list = await get(`/api/v1/cases/${caseId}/proceedings`, clerkToken);
+      expect(list.status).toBe(200);
+      expect((list.body.proceedings as unknown[]).length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('a cmecf docket event without source_identifier → 422 CASE_EVENT_MISSING_SOURCE', async () => {
+      if (!available) return;
+
+      const caseId = await freshCase();
+      const res = await post(`/api/v1/cases/${caseId}/docket-events`, clerkToken, {
+        source_system: 'cmecf',
+        event_code: 'ORD',
+        event_date: new Date().toISOString(),
+      });
+      expect(res.status).toBe(422);
+      expect(res.body.error_code).toBe('CASE_EVENT_MISSING_SOURCE');
+    });
+
+    it('two docket events with the same (source_system, source_identifier) → 409', async () => {
+      if (!available) return;
+
+      const caseId = await freshCase();
+      const sourceId = `cmecf:test:${Date.now()}:${Math.random()}`;
+      const first = await post(`/api/v1/cases/${caseId}/docket-events`, clerkToken, {
+        source_system: 'cmecf',
+        source_identifier: sourceId,
+        event_code: 'IND',
+        event_date: new Date().toISOString(),
+      });
+      expect(first.status).toBe(201);
+
+      const second = await post(`/api/v1/cases/${caseId}/docket-events`, clerkToken, {
+        source_system: 'cmecf',
+        source_identifier: sourceId,
+        event_code: 'IND',
+        event_date: new Date().toISOString(),
+      });
+      expect(second.status).toBe(409);
+    });
+
+    it('PATCH flips locally_modified on a synced event, leaves a manual event false', async () => {
+      if (!available) return;
+
+      const caseId = await freshCase();
+
+      // A synced (cmecf) event.
+      const synced = await post(`/api/v1/cases/${caseId}/docket-events`, clerkToken, {
+        source_system: 'cmecf',
+        source_identifier: `cmecf:sync:${Date.now()}:${Math.random()}`,
+        event_code: 'ARR',
+        event_date: new Date().toISOString(),
+      });
+      expect(synced.status).toBe(201);
+      expect(synced.body.locally_modified).toBe(false);
+
+      const syncedPatch = await patch(
+        `/api/v1/cases/${caseId}/docket-events/${synced.body.id}`,
+        clerkToken,
+        { event_description: 'Locally corrected arraignment note' },
+      );
+      expect(syncedPatch.status).toBe(200);
+      expect(syncedPatch.body.locally_modified).toBe(true);
+
+      // A manual event.
+      const manual = await post(`/api/v1/cases/${caseId}/docket-events`, clerkToken, {
+        event_code: 'CONF',
+        event_date: new Date().toISOString(),
+      });
+      expect(manual.status).toBe(201);
+
+      const manualPatch = await patch(
+        `/api/v1/cases/${caseId}/docket-events/${manual.body.id}`,
+        clerkToken,
+        { event_description: 'Manual edit' },
+      );
+      expect(manualPatch.status).toBe(200);
+      expect(manualPatch.body.locally_modified).toBe(false);
+    });
+
+    it('docket events filter by date range', async () => {
+      if (!available) return;
+
+      const caseId = await freshCase();
+      const old = new Date(Date.now() - 100 * 86_400_000).toISOString();
+      const recent = new Date().toISOString();
+
+      await post(`/api/v1/cases/${caseId}/docket-events`, clerkToken, {
+        event_code: 'OLD',
+        event_date: old,
+      });
+      await post(`/api/v1/cases/${caseId}/docket-events`, clerkToken, {
+        event_code: 'NEW',
+        event_date: recent,
+      });
+
+      const from = new Date(Date.now() - 10 * 86_400_000).toISOString();
+      const filtered = await get(
+        `/api/v1/cases/${caseId}/docket-events?date_from=${encodeURIComponent(from)}`,
+        clerkToken,
+      );
+      expect(filtered.status).toBe(200);
+      const codes = (filtered.body.docket_events as Array<{ event_code: string }>).map(
+        (e) => e.event_code,
+      );
+      expect(codes).toContain('NEW');
+      expect(codes).not.toContain('OLD');
+    });
+
+    it('a sealed case\u2019s child collection inherits the designation denial → 403', async () => {
+      if (!available) return;
+
+      // clerk_case_admin holds case scope over NDCA (court scope) and case_read
+      // but NOT designation_sealed. Reading the SEALED case's proceedings
+      // inherits the parent case's designation, so the guard denies 403
+      // AUTH_DESIGNATION_DENIED — the parent-case existence is known to the
+      // clerk, so it is a 403, not a 404.
+      const res = await get(
+        `/api/v1/cases/${CASES.sealed}/proceedings`,
+        clerkToken,
+      );
+      expect(res.status).toBe(403);
+      expect(res.body.error_code).toBe('AUTH_DESIGNATION_DENIED');
+    });
+  });
 });
