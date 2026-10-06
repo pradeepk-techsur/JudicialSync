@@ -68,7 +68,7 @@ Plans:
 **Plans**: 16 plans across 10 waves
 
 Plans:
-- [ ] 02-01-PLAN.md — Phase 2 platform schema: config package types, audit provenance + versioned hash field list, notifications/exceptions, access-tagged search index (wave 1)
+- [ ] 02-01-PLAN.md — Phase 2 platform schema: config package types, audit provenance + versioned hash field list, notifications/exceptions, access-tagged search index, narrow exceptions write path (wave 1)
 - [ ] 02-02-PLAN.md — Shared `@judicialsync/config-schema` zod package and the Phase 2 dependency surface (wave 1)
 - [ ] 02-03-PLAN.md — Mailpit, channel registry, closed-context templates, content policy structural + tripwire + CI check (wave 2)
 - [ ] 02-04-PLAN.md — Versioned canonical audit payload, rule_package_version_id stamping, mixed-version chain continuity (wave 2)
@@ -76,9 +76,9 @@ Plans:
 - [ ] 02-06-PLAN.md — ConfigResolver as the single read path, v1 package migration/seed, Phase 1 config demotion (wave 3)
 - [ ] 02-07-PLAN.md — OPA partial evaluation, residual-to-SQL translator with its own suite, Redis residual cache and invalidation (wave 3)
 - [ ] 02-08-PLAN.md — Rule package draft/validate/publish with session-derived approver and server-side SoD (wave 4)
-- [ ] 02-09-PLAN.md — Search API: SearchProvider, pre-filter before ranking, unsupported_filters, operational query log (wave 4)
+- [ ] 02-09-PLAN.md — Search API: SearchProvider, pre-filter before ranking, unsupported_filters, operational query log (wave 5)
 - [ ] 02-10-PLAN.md — Notifications core: trigger, recipient resolution, delivery, inbox, acknowledge, audit boundary (wave 4)
-- [ ] 02-11-PLAN.md — Retry/backoff, escalation sweeper over durable state, narrow exceptions write path (wave 5)
+- [ ] 02-11-PLAN.md — Retry/backoff and escalation sweeper over durable state, on the wave-1 exceptions write path (wave 5)
 - [ ] 02-12-PLAN.md — OpenAPI contract corrections, deviation and assumption registers, regenerated TS client (wave 6)
 - [ ] 02-13-PLAN.md — Configuration Engine screen (Screen-16) with structurally-blocked Publish (wave 7)
 - [ ] 02-14-PLAN.md — Notification inbox, polling transport abstraction, deep-link landing route (wave 8)
