@@ -3,14 +3,14 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-08-PLAN.md (grant lifecycle with 3-layer SoD, env-sourced self-closing bootstrap)
-last_updated: "2026-10-06T04:13:44.870Z"
-last_activity: "2026-10-06 — Wave 6: 01-10 landed (secure file upload: content-sniffed allowlist, real ClamAV INSTREAM scan, AES256 S3-compatible store, byte round-trip proven against the live stack)"
+stopped_at: Completed 01-14-PLAN.md (negative-path assurance suite: 42 raw-HTTP/raw-SQL tests proving criteria 1,3,4,5 against the live stack; traceability matrix + CI gate)
+last_updated: "2026-10-06T05:12:46.235Z"
+last_activity: "2026-10-06 — Wave 7: 01-14 landed (standalone assurance suite — 42501 immutability, byte-identical 403/404 designation split, upload rejection-before-storage + TLS1.2+/AES256, docs/ASSURANCE.md traceability gate; no production code; DEF-01 confirmed, criterion 5 PARTIAL per ASM-07)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 12
+  completed_plans: 13
   percent: 53
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 ## Current Position
 
 Phase: 1 of 8 (Core Identity, Case Model, Audit & Security Baseline)
-Plan: wave 6 executing (01-10 landed; 01-08/01-09/01-11/01-12 running in parallel on this branch)
+Plan: wave 7 executing (01-14 landed; 13 of 15 Phase-1 plans have SUMMARYs — 01-13 remains)
 Status: Executing
-Last activity: 2026-10-06 — Wave 6: 01-10 landed (secure file upload: content-sniffed allowlist, real ClamAV INSTREAM scan, AES256 S3-compatible store, byte round-trip proven against the live stack)
+Last activity: 2026-10-06 — Wave 7: 01-14 landed (standalone negative-path assurance suite proving criteria 1,3,4,5 over raw HTTP against the live stack + raw SQL as app_rw/app_dba; traceability matrix machine-checked; separate CI gate; no production code)
 
 Progress: [█████░░░░░] 53%
 
@@ -68,6 +68,7 @@ Progress: [█████░░░░░] 53%
 | Phase 01-core-identity-case-model-audit-security-baseline P12 | 95 min | 3 tasks | 14 files |
 | Phase 01 P11 | 83 min | 3 tasks | 12 files |
 | Phase 01 P08 | 4h 20m | 3 tasks | 12 files |
+| Phase 01-core-identity-case-model-audit-security-baseline P14 | 110 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,11 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-11: Key-access routes are self-scoped with a controller-level key_custodian check (security_officer only, not system_admin) producing 403 SECURITY_KEY_ACCESS_DENIED + an access_attempt audit — the specific code cannot come from the global AbacGuard without editing 01-07's file, and encryption_key is a capability with no resource attributes to weigh
 - [Phase 01]: 01-08: separation of duties is enforced in THREE independent layers (Rego sod_deny rule, the GrantsService.approve check, the table CHECK decided_by<>requested_by), each proven to refuse a self-approval alone; the service check is deliberately redundant and a comment forbids removing any of the three — each catches a different bypass (lost guard, direct call, raw SQL)
 - [Phase 01]: 01-08: bootstrap supplies the second person from configuration rather than bypassing SoD — requested_by=admin and decided_by=distinct-approver so the table CHECK and Rego rule hold; identities come only from env (never from whoever authenticates earliest), lists must be disjoint or startup fails, and POST /bootstrap/complete closes the path permanently and cannot be invoked by a bootstrap-granted principal
+- [Phase 01]: 01-14: the assurance suite is a BLACK BOX — it imports nothing from src/ or prisma/, drives raw fetch against the proxied running container and raw SQL as app_rw/app_dba, so no in-process behaviour can be mistaken for a guarantee; this is the structural difference between phase evidence and more feature tests
+- [Phase 01]: 01-14: criterion-3 immutability proven at the GRANT level (UPDATE/DELETE/TRUNCATE/trigger-tamper as app_rw → 42501, zero DELETE grants across platform.*) because an ORM-level refusal is exactly the 'application convention' criterion 3 rules out as insufficient; the role-asserting pg client (SELECT current_user on connect) stops the proof becoming a tautology over the wrong role
+- [Phase 01]: 01-14: chain-break assertions are scoped to the test's own corrupted audit_event_id and restore the head in a finally, never asserting the global chain_verified flag — the shared dev DB carries genuine prev_hash breaks from other suites' teardown (DEF-03), so a global assertion would fail for the wrong reason
+- [Phase 01]: 01-14: criterion 5 is recorded PARTIAL (ASM-07) — object-store AES256 is proven via HeadObject but database at-rest encryption is deferred to the deployment substrate; marking it complete would be the single most misleading line in the phase's output. docs/ASSURANCE.md's traceability is enforced by a meta-test that fails if the matrix names any spec file or test title that does not exist
+- [Phase 01]: 01-14: DEF-01 CONFIRMED by test — the seeded judge cannot read the sealed case (its only case scope is the plain case, and 01-02 narrowing confines it there), so criterion 4's positive control grants the sealed-case scope in-test as app_dba; the one-row seed fix (judge → sealed-case scope) is recommended to a later plan, and the narrowing must NOT be removed
 
 ### Pending Todos
 
@@ -148,13 +154,13 @@ None yet.
 - ASM-08 (from 01-05): the `docs/SCHEMA-NOTES.md` §7 `search_path` rule applies to EVERY future `platform.*` function, but the regression gate in migration `20260101000300` only covers `compute_audit_row_hash`. A later migration adding an unpinned function reintroduces the same production-breaking defect (`digest()` unresolvable under `search_path=platform`, which aborts every audit write and therefore every audited domain write) with no automated catch. Worth a generic lint over `pg_proc.proconfig` in a later assurance plan.
 - ASM-09 (from 01-04): two pinned container images vanished mid-phase — `minio/minio` was withdrawn from Docker Hub entirely (quay.io now requires authentication for every tag) and `clamav/clamav:1.3.1_base` was delisted. MinIO is now `chainguard/minio` DIGEST-pinned, which is a stronger pin than a tag but tracks no upstream release line and will not receive patches without a deliberate bump. Nothing checks that the stack's images still resolve, so the next withdrawal surfaces as a failed build in whichever plan happens to run next. Worth a registry-reachability check in a later assurance plan.
 - ASM-10 (from 01-06): `SESSION_TOKEN_SECRET` is consumed by `SessionService` but is absent from `.env.example`, which plan 01-01 owns and this plan could not modify. Unset, each process derives an ephemeral HMAC key, so access tokens do not survive a restart and do not validate across multiple instances — correct for local development and fatal for any multi-instance deployment. It is logged loudly at boot, but nothing fails. A later plan that may edit `.env.example` should declare it (marked `[SECRET]`, resolved from the secrets manager in production), and the Compose `api` service should set it.
-- DEF-01 (from 01-07, full detail in the phase's `deferred-items.md`): the seeded `judge` CANNOT read the seeded sealed case, so the **positive** half of Phase 1 criterion 4 is not demonstrable from the seed as it stands. 01-04 gives `judge` a `case` scope row on the PLAIN case, and under 01-02's narrowing semantics one such row confines the principal to exactly the cases named — the sealed read is therefore denied on SCOPE, before designation is ever considered. Both plans are individually correct and were never checked against each other; neither plan's tests could have caught it (01-02 uses synthetic principals, 01-04 asserts rows exist rather than what they authorize). 01-07's guard suite adds the row in-test and asserts BOTH states, so the semantics stay pinned. One-row fix in `seed/identity.ts` recommended to 01-14. Do NOT "fix" it by removing the narrowing — that would let every case-scoped principal, including the Phase 4 external attorney, reach every case in their court.
+- DEF-01 (from 01-07, full detail in the phase's `deferred-items.md`): the seeded `judge` CANNOT read the seeded sealed case, so the **positive** half of Phase 1 criterion 4 is not demonstrable from the seed as it stands. 01-04 gives `judge` a `case` scope row on the PLAIN case, and under 01-02's narrowing semantics one such row confines the principal to exactly the cases named — the sealed read is therefore denied on SCOPE, before designation is ever considered. Both plans are individually correct and were never checked against each other; neither plan's tests could have caught it (01-02 uses synthetic principals, 01-04 asserts rows exist rather than what they authorize). 01-07's guard suite adds the row in-test and asserts BOTH states, so the semantics stay pinned. **CONFIRMED by 01-14's assurance suite** (criterion 4's positive control had to grant the sealed-case scope in-test as app_dba); 01-14 wrote no production code per its plan, so the one-row fix in `seed/identity.ts` (judge → sealed-case scope) is re-recommended to a later seed-owning plan and recorded in `docs/ASSURANCE.md` Known gaps. Do NOT "fix" it by removing the narrowing — that would let every case-scoped principal, including the Phase 4 external attorney, reach every case in their court.
 - DEF-02 (from 01-07, PRE-EXISTING, full detail in `deferred-items.md`): `INTERNAL_SERVICE_TOKEN` is absent from `docker-compose.yml`'s `api` environment, so BOTH internal service routes — 01-05's `POST /audit/events` and 01-07's `POST /security/policy-evaluate` — return 403 in the deployed stack. `ServiceTokenGuard` failing closed on an unset secret is correct behaviour, so the symptom is the control working over a config gap. Nothing caught it because the in-process suites set the variable themselves and structurally cannot observe what Compose forwards, making this a coverage gap as much as a configuration one. One-line fix (the `:?` required-secret form the other secrets already use) recommended to 01-14, ideally with a test that calls an internal route through the deployed container.
 - DEF-03 (01-09): ChainVerifier flags prev_hash breaks over the shared test DB; all genuine orphans are access_attempt rows (01-07), never 01-09 case writes. Shared-test-DB artefact, not a production defect. Detail in deferred-items.md; for 01-12/01-14.
 - DEF-03 (from 01-11): 01-06 SessionConfigService and 01-07 ResourceLoaderService.effectiveSecurityConfig still read rule_package_versions directly; switch to CourtConfigService.getEffective. RetentionService.callerMaySee reimplements the designation exclusion predicate inline (CaseContextService/01-04 is a stub); share one predicate once it lands. Recommended to 01-14.
 
 ## Session Continuity
 
-Last session: 2026-10-06T04:13:44.843Z
-Stopped at: Completed 01-08-PLAN.md (grant lifecycle with 3-layer SoD, env-sourced self-closing bootstrap)
+Last session: 2026-10-06T05:12:46.235Z
+Stopped at: Completed 01-14-PLAN.md (negative-path assurance suite — 42 tests, criteria 1/3/4/5, traceability gate, CI workflow; no production code)
 Resume file: None
