@@ -3,14 +3,14 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-09-PLAN.md (shared case/docket model API, provenance, designation changes, no-delete proof)
-last_updated: "2026-10-06T03:40:13.534Z"
+stopped_at: Completed 01-12-PLAN.md (Audit Explorer + BullMQ hash-chain verification job)
+last_updated: "2026-10-06T03:57:13.613Z"
 last_activity: "2026-10-06 — Wave 6: 01-10 landed (secure file upload: content-sniffed allowlist, real ClamAV INSTREAM scan, AES256 S3-compatible store, byte round-trip proven against the live stack)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 9
+  completed_plans: 10
   percent: 53
 ---
 
@@ -65,6 +65,7 @@ Progress: [█████░░░░░] 53%
 
 *Updated after each plan completion*
 | Phase 01 P10 | 3h 40m | 3 tasks | 13 files |
+| Phase 01-core-identity-case-model-audit-security-baseline P12 | 95 min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-06T03:39:42.381Z
-Stopped at: Completed 01-09-PLAN.md (shared case/docket model API, provenance, designation changes, no-delete proof)
+Last session: 2026-10-06T03:56:47.170Z
+Stopped at: Completed 01-12-PLAN.md (Audit Explorer + BullMQ hash-chain verification job)
 Resume file: None
