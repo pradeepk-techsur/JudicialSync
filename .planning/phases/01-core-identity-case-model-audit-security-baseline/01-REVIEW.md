@@ -1,57 +1,85 @@
 ---
 phase: 1
-status: fixes_applied
+status: clean
 blockers: 1
 warnings: 2
 review_blockers_open: 0
-files_reviewed: 28
+files_reviewed: 6
 files_reviewed_list:
-  - apps/api/src/main.ts
-  - apps/api/src/common/guards/abac.guard.ts
-  - apps/api/src/modules/identity/auth.service.ts
-  - apps/api/src/modules/identity/dto/auth.dto.ts
-  - apps/api/src/modules/entitlements/grants.service.ts
-  - apps/api/src/modules/entitlements/grants.controller.ts
-  - apps/api/src/modules/entitlements/bootstrap.service.ts
-  - apps/api/src/modules/entitlements/bootstrap.controller.ts
-  - apps/api/src/modules/files/files.service.ts
-  - apps/api/src/modules/files/files.controller.ts
-  - apps/api/src/modules/files/object-store.service.ts
-  - apps/api/src/modules/files/allowlist.service.ts
-  - apps/api/src/modules/audit/audit.service.ts
-  - apps/api/src/modules/audit/explorer.service.ts
-  - apps/api/src/modules/audit/explorer.controller.ts
-  - apps/api/src/modules/audit/dto/explorer.dto.ts
   - apps/api/src/modules/audit/integrity/chain-verifier.service.ts
-  - apps/api/src/modules/audit/integrity/integrity-status.service.ts
-  - apps/api/src/modules/audit/integrity/integrity.controller.ts
-  - apps/api/src/modules/audit/integrity/integrity.processor.ts
-  - apps/api/src/modules/case-context/case-context.service.ts
-  - apps/api/src/modules/case-context/cases.service.ts
-  - apps/api/src/modules/case-context/cases.controller.ts
   - apps/api/src/modules/case-context/designations.controller.ts
-  - apps/api/src/modules/case-context/proceedings.service.ts
-  - apps/api/src/modules/case-context/proceeding-activity.probe.ts
-  - apps/api/src/modules/config/config.controller.ts
-  - apps/api/src/modules/config/court-config.service.ts
-  - apps/api/src/modules/retention/retention.service.ts
-  - apps/api/src/modules/retention/disposition.guard.ts
-  - apps/api/src/modules/retention/key-access.controller.ts
-  - apps/web/src/api/client.ts
+  - apps/api/src/openapi.ts
+  - apps/web/src/api/generated/schemas.gen.ts
+  - apps/web/src/api/generated/types.gen.ts
   - apps/web/src/auth/AuthProvider.tsx
-  - apps/web/src/auth/CallbackPage.tsx
-  - apps/web/src/auth/RequireSession.tsx
-  - apps/web/src/pages/AuditExplorerPage.tsx
-  - apps/web/src/pages/CaseListPage.tsx
-  - apps/web/src/pages/audit/AuditFilters.tsx
-  - apps/web/src/pages/audit/ChainIntegrityBadge.tsx
-  - apps/web/src/routes.tsx
-  - apps/web/src/api/generated/services.gen.ts
-reviewed_at: 2026-10-06T07:35:43Z
-iteration: 1
+reviewed_at: 2026-10-06T08:05:00Z
+iteration: 2
 ---
 
 # Phase 1 Code Review
+
+## Iteration 2 — re-review verdict (status: clean, review_blockers_open: 0)
+
+Re-review of the three iteration-1 findings after the code-fixer's commits
+(`987a5bc` B1, `3b5002e` W1, `a7e46d1` W2). Scope: the six fixer-touched files
+(`chain-verifier.service.ts`, `designations.controller.ts`, `openapi.ts`, the two
+regenerated web client files, `AuthProvider.tsx`) plus their verification seams
+(`audit.service.ts` insert path, `integrity-status.service.ts`, `integrity.processor.ts`,
+`entitlement-resolver.service.ts`/`principal.types.ts`, `audit-integrity-job.e2e-spec.ts`).
+Each fix was read in full — not trusted from the commit message — and checked for
+regressions. **All three findings are genuinely resolved; no fix-introduced
+regression survives refutation.** `apps/api` and `apps/web` `tsc --noEmit` both pass.
+
+- **B1 — FIXED.** The verifier now traverses by LINKAGE: it indexes each
+  `(occurred_at, id)` batch by `prev_hash` into a `pending` map and consumes rows
+  in `prev_hash → row_hash` order from `chainStart`, so a concurrency-driven
+  timestamp/linkage divergence no longer produces a false `prev_hash_mismatch`.
+  The `row_hash` content check (`checkRowHashOnly`) recomputes from each row's OWN
+  stored `prev_hash`, so it stays order-independent and a content tamper is still
+  caught; the traversal advances on the STORED `row_hash` (line 196), so a
+  mid-chain `row_hash` edit surfaces as one content break plus a localised
+  detached-segment head rather than one break per following row. Detached
+  segments, fork tampers (two rows sharing a `prev_hash`), and cycles are each
+  handled and counted; `chain_head_mismatch` tail-detection still runs on the full
+  walk. The 9 integrity-job e2e cases exercise content tamper, mid-chain
+  `prev_hash` tamper, tail deletion, multi-break, and the no-repair invariant.
+  Refuted the one residual I could construct (an incremental-window BOUNDARY row
+  could still mis-seed `prev_hash` under boundary straddle): it is a PRE-EXISTING
+  property of the `seedPrevHash`/windowing design — untouched by this fix — and
+  the authoritative daily FULL walk is boundary-free and now correct; the new
+  linkage walk strictly IMPROVES the incremental interior over the old sort walk.
+  Noted as an observation below, not a finding.
+
+- **W1 — FIXED.** Root cause was the OpenAPI source (`openapi.ts`) declaring the
+  scope shape as `{scope_type, scope_id}`. It now declares
+  `{scope_type, scope_value, scope_enum_value}`, matching what the API actually
+  emits (`entitlement-resolver.service.ts` → `principal.types.ts` `ScopeAttribute`).
+  `openapi.json`, `types.gen.ts`, `schemas.gen.ts` and the hand-written
+  `AuthProvider.tsx` `ScopeAttribute` are all realigned. A repo-wide search finds
+  zero remaining `scope_id` reference in `apps/web/src`; the web client copies
+  `data.scopes` through unchanged, now shape-consistent with the server.
+
+- **W2 — FIXED.** `designations.controller.ts` now threads a `runningSet` through
+  the apply and revoke loops; each `changeEvent` derives `after_state` from the
+  passed `beforeSet` and the caller advances `runningSet` to that `after_state`,
+  so successive events chain (event n `after` == event n+1 `before`) and the final
+  event shows the true cumulative set. The returned payload is independently
+  re-queried from the DB, so it is unaffected either way. Carries the fixer's
+  `requires human verification` flag for the multi-change path (no existing e2e
+  exercises it); the single-change `designations-api` suite passes unchanged.
+
+### Iteration-2 observation (pre-existing, not a finding)
+On an INCREMENTAL verify, `seedPrevHash` picks the pre-window predecessor by
+`occurred_at` order; under the same timestamp/linkage divergence B1 describes, a
+boundary-straddling commit pair could mis-seed the first in-window row and write a
+sticky `critical` alert. This is inherent to time-windowing (the boundary is a
+wall-clock instant), is NOT introduced or worsened by `987a5bc`, and is masked in
+practice by the daily full re-walk (boundary-free, authoritative for
+`chain_verified`) and the 2×-interval window overlap. Worth a hardening ticket for
+a later phase (seed/boundary by linkage, or treat an unresolved incremental
+boundary as inconclusive rather than a break) — out of scope for this phase's goal.
+
+---
 
 The phase diff was taken from the root commit `9e4410b` (the phase branch base — it
 is a root commit with no parent) to `HEAD`, excluding `.planning`, lockfiles and
