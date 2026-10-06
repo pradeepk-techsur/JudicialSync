@@ -3,14 +3,14 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-11-PLAN.md (configuration read path, retention/disposition no-auto-purge guard, key-access SoD, manual-fallback runbook)
-last_updated: "2026-10-06T04:08:57.917Z"
+stopped_at: Completed 01-08-PLAN.md (grant lifecycle with 3-layer SoD, env-sourced self-closing bootstrap)
+last_updated: "2026-10-06T04:13:44.870Z"
 last_activity: "2026-10-06 — Wave 6: 01-10 landed (secure file upload: content-sniffed allowlist, real ClamAV INSTREAM scan, AES256 S3-compatible store, byte round-trip proven against the live stack)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 11
+  completed_plans: 12
   percent: 53
 ---
 
@@ -67,6 +67,7 @@ Progress: [█████░░░░░] 53%
 | Phase 01 P10 | 3h 40m | 3 tasks | 13 files |
 | Phase 01-core-identity-case-model-audit-security-baseline P12 | 95 min | 3 tasks | 14 files |
 | Phase 01 P11 | 83 min | 3 tasks | 12 files |
+| Phase 01 P08 | 4h 20m | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,8 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-11: The configuration read path (CourtConfigService) has no default — a missing version is 500 CONFIG_NOT_FOUND and a malformed snapshot is 500 CONFIG_INVALID_SNAPSHOT, because a silent default would be an invisible return to the hardcoded constants CONTEXT rejected
 - [Phase 01]: 01-11: The record-destroying disposition capability is gated twice — the PDP answers 'may this principal confirm dispositions at all' and DispositionGuard answers 'is this a genuine self-named human confirmation' (rejects x-service-token); neither subsumes the other and automated purge is impossible by construction
 - [Phase 01]: 01-11: Key-access routes are self-scoped with a controller-level key_custodian check (security_officer only, not system_admin) producing 403 SECURITY_KEY_ACCESS_DENIED + an access_attempt audit — the specific code cannot come from the global AbacGuard without editing 01-07's file, and encryption_key is a capability with no resource attributes to weigh
+- [Phase 01]: 01-08: separation of duties is enforced in THREE independent layers (Rego sod_deny rule, the GrantsService.approve check, the table CHECK decided_by<>requested_by), each proven to refuse a self-approval alone; the service check is deliberately redundant and a comment forbids removing any of the three — each catches a different bypass (lost guard, direct call, raw SQL)
+- [Phase 01]: 01-08: bootstrap supplies the second person from configuration rather than bypassing SoD — requested_by=admin and decided_by=distinct-approver so the table CHECK and Rego rule hold; identities come only from env (never from whoever authenticates earliest), lists must be disjoint or startup fails, and POST /bootstrap/complete closes the path permanently and cannot be invoked by a bootstrap-granted principal
 
 ### Pending Todos
 
@@ -152,6 +155,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-06T04:08:47.187Z
-Stopped at: Completed 01-11-PLAN.md (configuration read path, retention/disposition no-auto-purge guard, key-access SoD, manual-fallback runbook)
+Last session: 2026-10-06T04:13:44.843Z
+Stopped at: Completed 01-08-PLAN.md (grant lifecycle with 3-layer SoD, env-sourced self-closing bootstrap)
 Resume file: None
