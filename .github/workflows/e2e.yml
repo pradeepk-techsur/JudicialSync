@@ -1,0 +1,144 @@
+# =============================================================================
+# JudicialSync — end-to-end suite + contract drift + accessibility gate
+# =============================================================================
+#
+# OWNERSHIP: this file belongs to plan 01-13 and NO LATER PLAN EDITS IT.
+# It is a SIBLING of ci.yml (01-01), policy.yml (01-02) and assurance.yml
+# (01-14), not a job appended to any of them — Phase 1 plans run partly in
+# parallel, so a shared workflow file would be a guaranteed merge conflict.
+# See the ownership table at the top of ci.yml.
+#
+# WHAT THIS GATE PROTECTS — three guarantees this plan ships:
+#
+#   1. CONTRACT DRIFT. The OpenAPI document is generated code-first from the
+#      running backend and the TypeScript client is generated from that
+#      document. `openapi:emit` + `api:generate` followed by
+#      `git diff --exit-code` fails the build if either the committed contract
+#      or the committed client drifts from the code — this is what makes "one
+#      source of truth" (TechArch/03a §6) real rather than aspirational.
+#
+#   2. THE REAL LOGIN ROUND-TRIP. The Playwright suite drives a real browser
+#      through Keycloak with password + TOTP against the live Compose stack —
+#      not a mock. A regression that breaks SSO or MFA turns this red.
+#
+#   3. ACCESSIBILITY. axe-core runs against the shipped screens and the build
+#      FAILS on any critical or serious violation. `UX-Mockup/Y2-accessibility.md`:
+#      "zero critical/serious violations permitted to merge." Report-only was
+#      rejected by name in CONTEXT — a warning nobody must act on gets ignored,
+#      and PROJECT.md calls Section 508 "non-negotiable, not optional polish."
+# =============================================================================
+
+name: E2E
+
+on:
+  push:
+  pull_request:
+
+# A new push to the same branch makes an in-flight run obsolete.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Contract drift — fast, no stack required.
+  # ---------------------------------------------------------------------------
+  contract:
+    name: OpenAPI contract + client drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # `npm ci` installs devDependencies, which is required: the Nest CLI,
+      # typescript and the generator all live there. Never add --omit=dev.
+      - name: Install dependencies
+        run: npm ci
+
+      # Emit the contract from the running code, then fail if it differs from
+      # what is committed. A controller change not reflected in the contract is
+      # a drift and fails here.
+      - name: Emit OpenAPI contract
+        run: npm run openapi:emit -w apps/api
+
+      - name: Fail on contract drift
+        run: git diff --exit-code openapi/openapi.json
+
+      # Generate the typed client from the contract, then fail if it differs
+      # from what is committed.
+      - name: Generate API client
+        run: npm run api:generate -w apps/web
+
+      - name: Fail on client drift
+        run: git diff --exit-code apps/web/src/api/generated
+
+      # The web app must typecheck against the generated client.
+      - name: Typecheck web
+        run: npx tsc --noEmit -p apps/web/tsconfig.json
+
+  # ---------------------------------------------------------------------------
+  # Full end-to-end + accessibility against the live Compose stack.
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: Playwright login/shell + axe gate
+    runs-on: ubuntu-latest
+    needs: contract
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The secrets the Compose stack requires. In CI these are non-production
+      # local-dev values, consistent with docs/SEED-CREDENTIALS.md (the realm
+      # and its credentials are published for local development only).
+      - name: Write .env for the stack
+        run: cp .env.example .env
+
+      # Bring up the whole stack — db, redis, opa, keycloak, clamav, minio,
+      # proxy, api, web — behind the single TLS origin.
+      - name: Start stack
+        run: docker compose up -d --build
+
+      # Wait for the UI and the API to answer through the proxy before testing.
+      - name: Wait for the stack
+        run: |
+          timeout 900 bash -c 'until curl -ksSf https://judicialsync.localhost:8443/ >/dev/null \
+            && curl -ksSf https://judicialsync.localhost:8443/api/v1/health >/dev/null; do sleep 10; done'
+
+      # Playwright 1.63.0's Chromium is installed at the pinned version; see
+      # apps/web/package.json. In CI (unlike the sandbox) the browser must be
+      # fetched once — this is the ONLY place a browser download is allowed, and
+      # it is scoped to chromium.
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: Run login + shell E2E
+        run: npx playwright test e2e/login-shell.spec.ts --workers=1 --reporter=list
+        working-directory: apps/web
+
+      # Named explicitly so a failure reads as an ACCESSIBILITY GATE in the
+      # checks list, not a generic test failure.
+      - name: Accessibility gate (axe-core, zero critical/serious)
+        run: npx playwright test e2e/axe.spec.ts --workers=1 --reporter=list
+        working-directory: apps/web
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down
