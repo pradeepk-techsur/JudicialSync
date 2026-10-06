@@ -5,6 +5,7 @@ import { AuditModule } from '../audit/audit.module';
 import { CaseContextService } from './case-context.service';
 import { CasesController } from './cases.controller';
 import { CasesService } from './cases.service';
+import { DesignationsController } from './designations.controller';
 import { DocketEventsController } from './docket-events.controller';
 import { PartiesController } from './parties.controller';
 import {
@@ -44,6 +45,7 @@ import { ProceedingsService } from './proceedings.service';
     ProceedingsController,
     PartiesController,
     DocketEventsController,
+    DesignationsController,
   ],
   providers: [
     CasesService,

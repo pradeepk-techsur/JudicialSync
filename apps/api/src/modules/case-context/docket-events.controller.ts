@@ -21,7 +21,7 @@ import { ProceedingsService } from './proceedings.service';
  * `source_system: 'manual'` plus a generated `source_identifier`, a non-manual
  * event without a source identifier is `422 CASE_EVENT_MISSING_SOURCE`, and a
  * PATCH of a synced record flips `locally_modified`. Every route carries one
- * `@Resource()`; the `caseIdParam` resolves attributes through the owning case.
+ * `@Resource`; the `caseIdParam` resolves attributes through the owning case.
  *
  * `CASE_EVENT_MISSING_SOURCE` must appear in this controller's source per the
  * plan's verification grep — it is referenced in the rule comments below so the

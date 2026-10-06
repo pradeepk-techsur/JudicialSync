@@ -19,7 +19,7 @@ import { ProceedingsService } from './proceedings.service';
  * `/cases/{id}/proceedings` and `/.../hearings`
  * ============================================================================
  *
- * Every route carries one `@Resource()` descriptor from plan 01-09's table,
+ * Every route carries one `@Resource` descriptor from plan 01-09's table,
  * each pair present in plan 01-02's `action_entitlement_map`. The `caseIdParam`
  * is what lets the ABAC loader resolve a child's attributes through its owning
  * case — so a sealed case's proceedings and hearings inherit its protection

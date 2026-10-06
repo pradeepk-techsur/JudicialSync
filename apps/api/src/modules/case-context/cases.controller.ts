@@ -18,7 +18,7 @@ import { principalOf } from './principal-of';
  * `/cases` — the case family
  * ============================================================================
  *
- * Every route carries exactly one `@Resource()` descriptor. `AbacGuard` reads
+ * Every route carries exactly one `@Resource` descriptor. `AbacGuard` reads
  * it, loads the target's real attributes, and asks OPA — there is no
  * authorization logic in this controller, by design (`TechArch/04-security.md`
  * §7.2). Each `(type, action)` pair below has a row in plan 01-02's

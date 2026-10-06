@@ -15,7 +15,7 @@ import { ProceedingsService } from './proceedings.service';
  * `/cases/{id}/parties` — party read, manual create, and status transition.
  *
  * A party is removed by transitioning its status to `withdrawn`, never by a
- * DELETE. Each route carries one `@Resource()`; the `caseIdParam` resolves the
+ * DELETE. Each route carries one `@Resource`; the `caseIdParam` resolves the
  * party's attributes through its owning case, so a sealed case's parties
  * inherit its protection.
  */

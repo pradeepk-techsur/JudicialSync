@@ -100,6 +100,22 @@ const RESOURCE_REASON_OVERRIDES: Readonly<
       message: "This case's audit history requires additional authorization",
     },
   },
+  // Plan 01-09: changing a case's security designation requires
+  // `case_security_admin`. The PDP denies a caller lacking it as
+  // AUTH_SCOPE_DENIED (its generic vocabulary); F01's error table names it
+  // CASE_DESIGNATION_DENIED for the client. A caller who also lacks the sealed
+  // entitlement for the target case is denied AUTH_DESIGNATION_DENIED, relabelled
+  // to the same feature code — both are "you may not touch this designation."
+  security_designation: {
+    AUTH_SCOPE_DENIED: {
+      errorCode: 'CASE_DESIGNATION_DENIED',
+      message: "You are not authorized to change this record's security designation",
+    },
+    AUTH_DESIGNATION_DENIED: {
+      errorCode: 'CASE_DESIGNATION_DENIED',
+      message: "You are not authorized to change this record's security designation",
+    },
+  },
 };
 
 /** Display label for a resource type, used in the 404 message. */
