@@ -64,5 +64,10 @@ module.exports = {
     '/test/abac-.*\\.e2e-spec\\.ts$',
     '/test/audit-explorer\\.e2e-spec\\.ts$',
     '/test/audit-integrity-job\\.e2e-spec\\.ts$',
+    // The `files-*` suites (plan 01-10) drive the real ClamAV and real MinIO
+    // from the Compose stack — one of them even stops the ClamAV container —
+    // and run under jest.files.config.js. Excluded here so `npm test` stays
+    // hermetic.
+    '/test/files-.*\\.e2e-spec\\.ts$',
   ],
 };

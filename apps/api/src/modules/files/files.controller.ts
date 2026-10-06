@@ -70,12 +70,27 @@ export class FilesController {
   @UseInterceptors(
     FileInterceptor('file', {
       limits: {
-        // A hard ceiling matching the default court limit. The per-court value
-        // lives in configuration and is re-enforced in AllowlistService.check;
-        // this static cap stops an attacker streaming gigabytes before that
-        // check runs. Kept generous enough never to reject a legitimate file
-        // the configured limit would allow.
-        fileSize: Number(process.env.MAX_UPLOAD_BYTES ?? 52_428_800),
+        // A DoS CEILING, deliberately ABOVE the per-court business limit — not
+        // the business limit itself (threat T-01-44). The distinction matters:
+        //
+        //   - the per-court `max_upload_bytes` is a BUSINESS rule, enforced in
+        //     `AllowlistService.check`, and a violation must return the exact
+        //     `422 SECURITY_FILE_TYPE_TOO_LARGE` code FRD/F13 specifies; but
+        //   - multer's own `fileSize` limit, when hit, aborts the stream and
+        //     surfaces as a framework `413` with a generic code — NOT the FRD
+        //     code. If this cap equalled the business limit, a file one byte
+        //     over would get a 413 instead of the specified 422.
+        //
+        // So multer's cap sits a headroom above the largest plausible court
+        // limit purely to stop an attacker streaming gigabytes before the
+        // in-memory buffer is inspected. A file that is over the business limit
+        // but under this ceiling reaches `AllowlistService.check`, which buffers
+        // it (bounded by this very cap) and returns the correct 422. A file over
+        // even this ceiling is a DoS attempt and a 413 is the right answer.
+        fileSize: Number(
+          process.env.MAX_UPLOAD_BYTES_CEILING ??
+            2 * Number(process.env.MAX_UPLOAD_BYTES ?? 52_428_800),
+        ),
       },
     }),
   )
