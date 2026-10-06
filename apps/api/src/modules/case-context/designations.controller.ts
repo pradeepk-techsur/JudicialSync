@@ -128,6 +128,15 @@ export class DesignationsController {
     await withAudit(this.prisma, this.audit, async (tx) => {
       const events = [];
 
+      // A running set threaded through every change, so each event's
+      // before_state is the set immediately BEFORE that single change and its
+      // after_state the set immediately AFTER it. Computing every event from the
+      // original `currentSet` instead would make a two-add patch record
+      // after={…,X} then after={…,Y} — neither showing the true cumulative
+      // {…,X,Y}, and the per-event before/after not forming a consistent chain
+      // (US-1.2: each change produces an event with before/after state).
+      let runningSet = currentSet;
+
       for (const designation of added) {
         await tx.security_designations.create({
           data: {
@@ -137,9 +146,15 @@ export class DesignationsController {
             applied_by: principal.user_id,
           },
         });
-        events.push(
-          this.changeEvent(principal, caseId, currentSet, designation, 'applied'),
+        const event = this.changeEvent(
+          principal,
+          caseId,
+          runningSet,
+          designation,
+          'applied',
         );
+        events.push(event);
+        runningSet = event.after_state.designations;
       }
 
       for (const designation of removed) {
@@ -150,9 +165,15 @@ export class DesignationsController {
           where: { id: row.id },
           data: { revoked_at: new Date(), revoked_by: principal.user_id },
         });
-        events.push(
-          this.changeEvent(principal, caseId, currentSet, designation, 'revoked'),
+        const event = this.changeEvent(
+          principal,
+          caseId,
+          runningSet,
+          designation,
+          'revoked',
         );
+        events.push(event);
+        runningSet = event.after_state.designations;
       }
 
       return { result: undefined, audit: events };
@@ -164,7 +185,14 @@ export class DesignationsController {
     return { designations: after.map((r) => this.toResponse(r)) };
   }
 
-  /** One `designation_change` event with the full before/after set. */
+  /**
+   * One `designation_change` event with the full before/after set.
+   *
+   * `beforeSet` is the active-designation set immediately BEFORE this single
+   * change (the caller threads a running set through a multi-change patch, so
+   * successive events chain: event n's `after_state` is event n+1's
+   * `before_state`).
+   */
   private changeEvent(
     principal: Principal,
     caseId: string,
