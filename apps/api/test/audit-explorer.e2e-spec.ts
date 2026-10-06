@@ -147,10 +147,43 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
   // Helpers
   // =========================================================================
 
-  const get = (path: string, token: string): request.Test =>
+  /**
+   * Log each user in AT MOST ONCE and reuse the session token.
+   *
+   * Every `loginAs` is a real password + TOTP browser flow, and Keycloak
+   * enforces TOTP one-time-use — consecutive logins inside one 30s window make
+   * the harness wait for the next window, which it must share with the other
+   * plans' suites running against the same Keycloak. Logging in once per user
+   * and reusing the (long-lived) session token removes almost all of that
+   * contention; the SoD/designation properties under test depend on the
+   * principal's entitlements, not on a fresh login per assertion.
+   *
+   * The one place a fresh login is still required is after an in-test grant,
+   * because the session's cached principal must be re-resolved — those call
+   * `freshLogin` explicitly.
+   */
+  const sessionCache = new Map<string, string>();
+  const token = async (
+    user: 'security_officer' | 'clerk_case_admin' | 'court_admin',
+  ): Promise<string> => {
+    const cached = sessionCache.get(user);
+    if (cached !== undefined) return cached;
+    const { session_token } = await loginAs(app, user);
+    sessionCache.set(user, session_token);
+    return session_token;
+  };
+  const freshLogin = async (
+    user: 'security_officer' | 'clerk_case_admin' | 'court_admin',
+  ): Promise<string> => {
+    const { session_token } = await loginAs(app, user);
+    sessionCache.set(user, session_token);
+    return session_token;
+  };
+
+  const get = (path: string, tok: string): request.Test =>
     request(app.getHttpServer())
       .get(path)
-      .set('Authorization', `Bearer ${token}`);
+      .set('Authorization', `Bearer ${tok}`);
 
   /**
    * Seed audit events across the plain and sealed cases, plus one carrying a
@@ -230,7 +263,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
   it('security_officer (holds audit_reader) queries the Explorer and sees derived fields', async () => {
     if (!available) return;
 
-    const { session_token } = await loginAs(app, 'security_officer');
+    const session_token = await token('security_officer');
     const response = await get('/api/v1/audit/explorer', session_token);
 
     expect(response.status).toBe(200);
@@ -267,7 +300,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
 
     // clerk_case_admin holds case_read/create/update/security_admin/file_upload
     // and NO audit_reader. The PDP denies at the guard, before the service runs.
-    const { session_token } = await loginAs(app, 'clerk_case_admin');
+    const session_token = await token('clerk_case_admin');
     const response = await get('/api/v1/audit/explorer', session_token);
 
     expect(response.status).toBe(403);
@@ -282,7 +315,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
     it('object_type and action_type each narrow correctly', async () => {
       if (!available) return;
 
-      const { session_token } = await loginAs(app, 'security_officer');
+      const session_token = await token('security_officer');
 
       const byAction = await get(
         '/api/v1/audit/explorer?action_type=config_change',
@@ -306,7 +339,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
     it('user_id and a date range each narrow correctly', async () => {
       if (!available) return;
 
-      const { session_token } = await loginAs(app, 'security_officer');
+      const session_token = await token('security_officer');
 
       const byUser = await get(
         `/api/v1/audit/explorer?user_id=${USERS.clerk_case_admin}`,
@@ -334,7 +367,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
   it('keyset pagination returns disjoint, ordered pages', async () => {
     if (!available) return;
 
-    const { session_token } = await loginAs(app, 'security_officer');
+    const session_token = await token('security_officer');
 
     const first = await get('/api/v1/audit/explorer?limit=5', session_token);
     expect(first.status).toBe(200);
@@ -386,7 +419,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
     await grantEntitlement(USERS.court_admin, 'case_read');
     await grantCaseScope(USERS.court_admin, CASES.sealed);
 
-    const { session_token } = await loginAs(app, 'court_admin');
+    const session_token = await freshLogin('court_admin');
     const response = await get(
       `/api/v1/audit/explorer?case_id=${CASES.sealed}`,
       session_token,
@@ -415,7 +448,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
     // security_officer holds audit_reader but has NO access path to the sealed
     // case (no case_read, no scope). A case_id filter must yield an empty set
     // byte-identical to the one for a random nonexistent UUID.
-    const { session_token } = await loginAs(app, 'security_officer');
+    const session_token = await token('security_officer');
 
     const sealed = await get(
       `/api/v1/audit/explorer?case_id=${CASES.sealed}`,
@@ -446,7 +479,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
 
     // security_officer (audit_reader, no designation_sealed) — the sealed case's
     // audit rows must not appear in the default view.
-    const { session_token } = await loginAs(app, 'security_officer');
+    const session_token = await token('security_officer');
     const response = await get(
       '/api/v1/audit/explorer?limit=200',
       session_token,
@@ -469,7 +502,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
 
     // After cases 5 and 6, access_attempt rows exist. A security_officer
     // (audit_reader) filtering by action_type=access_attempt sees them.
-    const { session_token } = await loginAs(app, 'security_officer');
+    const session_token = await token('security_officer');
     const response = await get(
       '/api/v1/audit/explorer?action_type=access_attempt&limit=200',
       session_token,
@@ -491,7 +524,7 @@ describe('audit-explorer: access-scoped audit query (e2e)', () => {
     it('POST/PATCH/DELETE on /audit/explorer are not routed', async () => {
       if (!available) return;
 
-      const { session_token } = await loginAs(app, 'security_officer');
+      const session_token = await token('security_officer');
       const auth = { Authorization: `Bearer ${session_token}` };
 
       const post = await request(app.getHttpServer())
