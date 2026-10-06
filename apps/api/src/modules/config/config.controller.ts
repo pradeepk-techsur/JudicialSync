@@ -31,7 +31,7 @@ import {
  *
  * ## Authorization
  *
- * Both routes carry `@Resource({type:'court_config', action:'read'})`. Plan
+ * Both routes carry a court_config/read Resource descriptor. Plan
  * 01-02's `action_entitlement_map` binds `court_config`/`read` to the
  * `case_read` entitlement, and plan 01-07's loader resolves a `court_config`
  * resource against the `courts` row named by `{court_id}`, so cross-court
