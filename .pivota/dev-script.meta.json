@@ -2,14 +2,40 @@
   "generator_version": "init-dev-server@1",
   "catalog_entry": "compose",
   "generated_at": "2026-10-06T08:10:59Z",
-  "inspection_inputs_hash": "9fd743eb9f9f7fc0302a7c35d4813755f0ab87c84331f0ad88ff47a1af293077",
+  "inspection_inputs_hash": "a7f33babd0d8863639d45422709fc90f0a3f256da5bad5a712006af63867737e",
   "inspection_inputs": {
     "matched_globs": [
-      "*compose.y*ml",
+      "docker-compose.yml",
       "package.json"
     ],
     "manifest_signatures": [
-      "docker-compose.yml:services:api,clamav,db,keycloak,minio,opa,proxy,redis,web"
+      "apps/api/package.json:script:build=nest build",
+      "apps/api/package.json:script:db:migrate=DATABASE_URL=$MIGRATION_DATABASE_URL prisma migrate deploy",
+      "apps/api/package.json:script:db:seed=tsx prisma/seed.ts",
+      "apps/api/package.json:script:lint=eslint \"{src,test}/**/*.ts\"",
+      "apps/api/package.json:script:openapi:emit=tsx scripts/emit-openapi.ts",
+      "apps/api/package.json:script:start:prod=node dist/src/main.js",
+      "apps/api/package.json:script:start=nest start",
+      "apps/api/package.json:script:test:assurance=jest --config jest.assurance.config.js --runInBand",
+      "apps/api/package.json:script:test:auth=jest --config jest.auth.config.js --runInBand",
+      "apps/api/package.json:script:test:case=jest --config jest.case.config.js --runInBand",
+      "apps/api/package.json:script:test:files=node --experimental-vm-modules node_modules/.bin/jest --config jest.files.config.js --runInBand",
+      "apps/api/package.json:script:test:grants=jest --config jest.grants.config.js --runInBand",
+      "apps/api/package.json:script:test:integrity=jest --config jest.integrity.config.js --runInBand",
+      "apps/api/package.json:script:test:policy=jest --config jest.policy.config.js --runInBand",
+      "apps/api/package.json:script:test=jest --config jest.config.js",
+      "apps/web/package.json:dependencies:react@^18.3.1",
+      "apps/web/package.json:dev-script:vite --host 0.0.0.0 --port 5173",
+      "apps/web/package.json:devDependencies:vite@^5.4.9",
+      "apps/web/package.json:script:api:generate=openapi-ts",
+      "apps/web/package.json:script:build=tsc --noEmit && vite build",
+      "apps/web/package.json:script:dev=vite --host 0.0.0.0 --port 5173",
+      "apps/web/package.json:script:lint=eslint \"src/**/*.{ts,tsx}\"",
+      "apps/web/package.json:script:preview=vite preview --host 0.0.0.0 --port 5173",
+      "apps/web/package.json:script:test:e2e=playwright test --workers=1 --reporter=list",
+      "package.json:script:build=npm run build --workspaces --if-present",
+      "package.json:script:lint=npm run lint --workspaces --if-present",
+      "package.json:script:test=npm run test --workspaces --if-present"
     ],
     "existing_scripts": []
   }
