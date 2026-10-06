@@ -49,14 +49,21 @@ export class AuditExplorerController {
   /**
    * Filter the audit history.
    *
-   * `idParam: 'case_id'` lets `AbacGuard` and the resource loader see the named
-   * case when the caller filters by one — the same path a per-record read uses
-   * — while an unfiltered call resolves to the collection form (`audit_event`
-   * with no id), whose only gate is `audit_reader`. The per-row designation
-   * exclusion is the service's own, applied as a SQL pre-filter.
+   * The route's `@Resource()` carries **no `idParam`** deliberately. The
+   * Explorer is a COLLECTION endpoint: its single route-level gate is the
+   * `audit_reader` entitlement, which the PDP decides against the `audit_event`
+   * collection form (id = null). Passing `case_id` as `idParam` would make
+   * `AbacGuard` resolve the named case's audit resource and apply the per-record
+   * 403/404 designation split itself — pre-empting, and silently diverging from,
+   * the Explorer's own per-row pre-filter and its three-way 403-vs-404-vs-empty
+   * branching (`AuditExplorerService.query`). The designation decision for a
+   * filtered case is the service's, because only the service knows the
+   * difference between "parent access, missing designation" (403) and "blind
+   * discovery" (empty) across a *collection* query. (`FRD/Y2-errors.md`
+   * principle 3, resolved in the service rather than re-decided in the guard.)
    */
   @Get('audit/explorer')
-  @Resource({ type: 'audit_event', action: 'read', idParam: 'case_id' })
+  @Resource({ type: 'audit_event', action: 'read' })
   async explore(
     @Query() rawQuery: unknown,
     @Req() request: Request,

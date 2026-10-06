@@ -17,12 +17,13 @@ import {
 /**
  * Parse `REDIS_URL` into the connection options BullMQ needs.
  *
- * BullMQ (ioredis under the hood) accepts a URL, but passing the parsed host /
- * port / password explicitly keeps the parse in one place and lets a missing
- * URL fall back to localhost without BullMQ throwing at module-construction
- * time — the schedule is disabled separately via
- * `AUDIT_INTEGRITY_SCHEDULE_ENABLED`, and a hermetic unit test that never arms
- * the schedule must still be able to boot the module.
+ * **Called from `forRootAsync`'s factory, NOT inline in the decorator.** An
+ * inline `BullModule.forRoot({ connection: redisConnection() })` evaluates this
+ * at class-decoration time — i.e. when the module file is first imported, which
+ * for `AppModule` is before a test's `bootApp` has set `REDIS_URL`. The parse
+ * then captures the `localhost` fallback and BullMQ silently connects nowhere.
+ * `forRootAsync`'s `useFactory` runs at module INSTANTIATION, after the
+ * environment is in place, so the connection points where it should.
  */
 function redisConnection(): {
   host: string;
@@ -91,7 +92,7 @@ function redisConnection(): {
     // separately in IntegrityProcessor and gated on
     // AUDIT_INTEGRITY_SCHEDULE_ENABLED, so registering the queue here does not
     // by itself start any periodic work.
-    BullModule.forRoot({ connection: redisConnection() }),
+    BullModule.forRootAsync({ useFactory: () => ({ connection: redisConnection() }) }),
     BullModule.registerQueue({ name: AUDIT_INTEGRITY_QUEUE }),
   ],
   providers: [

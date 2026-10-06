@@ -63,6 +63,45 @@ const REASON_RESPONSES: Readonly<
   },
 };
 
+/**
+ * Resource-type-aware refinement of a denial's `error_code` and message.
+ *
+ * `FRD/Y2-errors.md` and the per-feature FRD error tables require that a denial
+ * carry a **feature-specific** code, not only the generic `AUTH_*` one — e.g.
+ * F02's "Explorer query without `audit_reader`" is `AUDIT_READ_DENIED` with
+ * "You do not have audit explorer access", and its sealed-case denial is
+ * `AUDIT_DESIGNATION_DENIED`. The same pattern recurs for F01
+ * (`CASE_DESIGNATION_DENIED`), F12 (`PORTAL_DESIGNATION_DENIED`), F16
+ * (`LEDGER_DESIGNATION_DENIED`), each listed in `Y2-errors.md` principle 3.
+ *
+ * This is **presentation, not policy**. The DECISION is entirely the PDP's —
+ * this table never changes allow/deny, it only relabels a denial the policy
+ * already made so the client sees the code its feature's FRD table specifies.
+ * Keyed by `(resource_type, generic_reason_code)`; an absent entry falls back to
+ * the generic code and message in {@link REASON_RESPONSES}, so adding a new
+ * resource type here is optional and never widens access.
+ *
+ * Plan 01-12 added `audit_event`; later feature plans add their own rows for
+ * their own FRD codes.
+ */
+const RESOURCE_REASON_OVERRIDES: Readonly<
+  Record<string, Record<string, { errorCode: string; message: string }>>
+> = {
+  audit_event: {
+    // A missing `audit_reader` entitlement is denied by the PDP as
+    // AUTH_SCOPE_DENIED (the policy has no per-feature reason vocabulary); F02's
+    // error table names it AUDIT_READ_DENIED for the client.
+    AUTH_SCOPE_DENIED: {
+      errorCode: 'AUDIT_READ_DENIED',
+      message: 'You do not have audit explorer access',
+    },
+    AUTH_DESIGNATION_DENIED: {
+      errorCode: 'AUDIT_DESIGNATION_DENIED',
+      message: "This case's audit history requires additional authorization",
+    },
+  },
+};
+
 /** Display label for a resource type, used in the 404 message. */
 const NOT_FOUND_LABELS: Readonly<Record<string, string>> = {
   case: 'Case',
@@ -321,6 +360,13 @@ export class AbacGuard implements CanActivate {
       throw this.notFound(descriptor.type);
     }
 
+    // A feature-specific relabelling of the denial, if the resource type
+    // declares one (FRD/Y2-errors.md per-feature codes). Presentation only — the
+    // decision is unchanged; this just names it the way the feature's FRD table
+    // does. Falls back to the generic reason code and message below.
+    const override =
+      RESOURCE_REASON_OVERRIDES[descriptor.type]?.[decision.reason_code];
+
     const mapped = REASON_RESPONSES[decision.reason_code];
     if (mapped === undefined) {
       this.logger.warn(
@@ -330,12 +376,17 @@ export class AbacGuard implements CanActivate {
       );
       throw new ApiException(
         403,
-        decision.reason_code === '' ? 'AUTH_SCOPE_DENIED' : decision.reason_code,
-        'You do not have access to this record',
+        override?.errorCode ??
+          (decision.reason_code === '' ? 'AUTH_SCOPE_DENIED' : decision.reason_code),
+        override?.message ?? 'You do not have access to this record',
       );
     }
 
-    throw new ApiException(mapped.status, decision.reason_code, mapped.message);
+    throw new ApiException(
+      mapped.status,
+      override?.errorCode ?? decision.reason_code,
+      override?.message ?? mapped.message,
+    );
   }
 
   /**

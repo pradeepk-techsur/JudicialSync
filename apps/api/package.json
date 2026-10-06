@@ -14,7 +14,7 @@
     "test:auth": "jest --config jest.auth.config.js --runInBand",
     "test:policy": "jest --config jest.policy.config.js --runInBand",
     "test:integrity": "jest --config jest.integrity.config.js --runInBand",
-    "test:files": "jest --config jest.files.config.js --runInBand",
+    "test:files": "node --experimental-vm-modules node_modules/.bin/jest --config jest.files.config.js --runInBand",
     "test:case": "jest --config jest.case.config.js --runInBand",
     "test:grants": "jest --config jest.grants.config.js --runInBand",
     "db:migrate": "DATABASE_URL=$MIGRATION_DATABASE_URL prisma migrate deploy",

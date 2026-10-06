@@ -149,18 +149,19 @@ export class IntegrityProcessor extends WorkerHost implements OnModuleInit {
 
   /** A `ping` against the queue's Redis client, bounded by `timeoutMs`. */
   private async pingWithTimeout(timeoutMs: number): Promise<boolean> {
-    // `queue.client` resolves to the ioredis instance; its type here
-    // (`IRedisClient`) omits `ping`, so narrow to the method we call.
-    const client = (await this.queue.client) as unknown as {
-      ping: () => Promise<string>;
-    };
+    const deadline = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('redis ping timeout')), timeoutMs),
+    );
     try {
-      await Promise.race([
-        client.ping(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('redis ping timeout')), timeoutMs),
-        ),
-      ]);
+      // BOTH awaits are bounded by the single deadline: resolving `queue.client`
+      // can itself hang when the connection never reaches `ready` (ioredis with
+      // `maxRetriesPerRequest: null` keeps retrying rather than rejecting), and
+      // boot must not wait on it.
+      const client = (await Promise.race([
+        this.queue.client,
+        deadline,
+      ])) as unknown as { ping: () => Promise<string> };
+      await Promise.race([client.ping(), deadline]);
       return true;
     } catch {
       return false;
