@@ -2,12 +2,14 @@
 phase: 2
 slug: platform-configuration-communication-services
 status: draft
+revision: 2
 design_system: uswds
 shadcn_initialized: false
 preset: not applicable — USWDS is contractually binding per .planning/PROJECT.md
 component_library: "@trussworks/react-uswds over @uswds/uswds 3.x"
 accessibility_standard: Section 508 / WCAG 2.1 AA (build-blocking axe-core gate)
 created: 2026-10-06
+revised: 2026-10-06
 ---
 
 # Phase 2 — UI Design Contract
@@ -39,12 +41,13 @@ entitlement-gated. Phase 4 builds role-specific workspaces; **this phase does no
 
 Screens 2 and 3 have **no UX-Mockup screen file** — `Screen-16` is the only mockup covering this phase.
 This contract is therefore the primary visual source of truth for the inbox and search surfaces, and it
-derives their conventions from `Screen-17-audit-explorer.md` (the already-specified sibling screen in the
-same shell), `Y0-patterns.md`, and `Y2-accessibility.md`.
+supplies their layout and information hierarchy below, derived from `Screen-17-audit-explorer.md` (the
+already-specified sibling screen in the same shell), `Y0-patterns.md`, and `Y2-accessibility.md`.
 
 **Repository state:** no source code exists. Phases 1 and 2 are both fully planned (15 + 16 plans) but
 neither has executed. This contract describes what the not-yet-written code must satisfy — nothing was
-scouted, because there is nothing to scout.
+scouted locally, because there is nothing to scout. See *Verification Basis* for how USWDS claims were
+checked.
 
 ---
 
@@ -57,7 +60,7 @@ scouted, because there is nothing to scout.
 | Component library | `@trussworks/react-uswds` (React bindings over USWDS markup) |
 | Icon library | **USWDS Icon sprite** (`usa-icon`, shipped inside `@uswds/uswds`). No third-party icon library. |
 | Font | **Source Sans Pro** — USWDS default (`$theme-font-type-sans: "source-sans-pro"`), self-hosted from `@uswds/uswds`. No webfont CDN (federal data-residency posture). |
-| Theme changes in Phase 2 | **None.** Phase 2 adds no theme settings and overrides no USWDS CSS. See *Theme Discipline* below. |
+| Theme changes in Phase 2 | **None.** Every token below is a USWDS default. Phase 2 adds no theme settings and writes no custom CSS. |
 
 ### Theme discipline (binding)
 
@@ -68,12 +71,18 @@ scouted, because there is nothing to scout.
 2. *"USWDS default focus-ring styling preserved, **never overridden by custom CSS**."*
 
 Therefore:
-- **No hex value in this document may be hand-entered into the codebase.** The hex column below exists so
-  the checker can evaluate contrast and so a reviewer can see what a token resolves to. Code references
-  the **token**, via USWDS Sass functions (`color()`, `units()`, `font-size()`) or USWDS utility classes.
-  A literal `#005ea2` appearing in `apps/web/src/` is a contract violation.
-- Phase 2 modifies **no** Phase 1 theme file. All values below are inherited USWDS defaults, verified
-  against USWDS source on 2026-10-06.
+
+- **No hex value in this document may be hand-entered into the codebase.** The hex columns exist so the
+  checker can evaluate contrast and so a reviewer can see what a token resolves to. A literal `#005ea2`
+  appearing in `apps/web/src/` is a contract violation.
+- **USWDS utility classes are the permitted mechanism** and are *not* "custom overrides". Applying
+  `bg-success`, `text-ink`, `font-sans-lg` or `margin-y-2` is ordinary USWDS usage. Writing a
+  hand-authored CSS rule, a styled-component, or an inline `style={{color:…}}` is not. This distinction
+  matters: the Tag foreground pairings below are implemented with utilities, not with custom CSS.
+- Rule 1 is true of **USWDS's own designed pairings**, not of arbitrary fill/text combinations. Changing a
+  component's background without re-declaring its foreground can and does break AA — see the Indicator
+  Contract, where three fills require three different foregrounds.
+- Phase 2 modifies **no** Phase 1 theme file.
 
 ---
 
@@ -115,23 +124,59 @@ three separate plans.
 
 USWDS type tokens. Resolved px is for the default theme; **the token is the contract, px is informative.**
 
-| Role | USWDS token | Scale | Size | Weight | Line height token | Ratio |
-|------|-------------|-------|------|--------|-------------------|-------|
+| Role | USWDS token | Scale index | Size | Weight | Line-height token | Ratio |
+|------|-------------|-------------|------|--------|-------------------|-------|
 | Body / table cell / input | `sm` | 5 | 16px | `normal` (400) | `5` | 1.62 |
-| Label / hint / Tag / timestamp | `2xs` | 3 | 14px | `normal` (400), `bold` (700) for Tag text | `4` | 1.5 |
+| Label / hint / Tag / timestamp | `2xs` | 3 | 14px | `normal` (400); `bold` (700) for Tag text | `4` | 1.5 |
 | Section & panel heading (`h2`, `h3`) | `lg` | 9 | 22px | `bold` (700) | `2` | 1.15 |
 | Page title (`h1`) | `2xl` | 14 | 40px | `bold` (700) | `2` | 1.15 |
 
-**Exactly four sizes.** `xl` (32px, USWDS default `h2`) is deliberately unused — Phase 2 renders `h2` at
-`lg` via the `font-sans-lg` utility so the ramp stays at four steps. `3xs`, `xs`, `md`, `3xl` are unused.
+**Exactly four sizes.** `xl` (scale 12 = 32px, which is the USWDS default for `h2`) is deliberately unused —
+Phase 2 renders `h2` at `lg` via the `font-sans-lg` utility so the ramp stays at four steps. `3xs`, `xs`,
+`md`, `3xl` are unused.
 
 **Exactly two weights:** `normal` (400) and `bold` (700).
 
-> ⚠️ **Honest gap.** The USWDS default theme also enables `light` (300) — `$theme-font-weight-light: 300`.
-> Phase 2 does not change that setting (it lives in a Phase 1 file). The two-weight contract is therefore
-> enforced by **usage discipline, not by configuration**: no Phase 2 component may apply `text-light`,
-> `font-weight: 300`, or `$theme-font-weight-light`. Enforceable by grep over `apps/web/src/pages/` and
-> `apps/web/src/shell/`. If a later phase owns the theme file, set `$theme-font-weight-light: false`.
+### Verification of the token → scale → px triples
+
+> The checker's revision report asserted a different token→scale mapping (`sm:4`, `2xs:2`, `lg:7`,
+> `2xl:11`, and `h2 = xl = 22px`) and asked for these rows to be re-derived. **They were re-derived, and
+> the table above is unchanged — it is correct as written.** The asserted mapping does not match USWDS
+> 3.x source. Evidence, so this can be settled without a third round:
+>
+> **`uswds-core/src/styles/settings/_settings-typography.scss` (token → scale), lines 310–318:**
+> ```scss
+> $theme-type-scale-3xs: 2 !default;   $theme-type-scale-2xs: 3  !default;
+> $theme-type-scale-xs:  4 !default;   $theme-type-scale-sm:  5  !default;
+> $theme-type-scale-md:  6 !default;   $theme-type-scale-lg:  9  !default;
+> $theme-type-scale-xl: 12 !default;   $theme-type-scale-2xl: 14 !default;
+> $theme-type-scale-3xl: 15 !default;
+> ```
+>
+> **`uswds-core/src/styles/tokens/font/type-scale.scss` (scale → px):**
+> `2: 13px, 3: 14px, 4: 15px, 5: 16px, 6: 17px, 9: 22px, 12: 32px, 14: 40px, 15: 48px`
+>
+> Composing the two: `2xs` = 3 = **14px**, `sm` = 5 = **16px**, `lg` = 9 = **22px**, `2xl` = 14 = **40px**,
+> `xl` = 12 = **32px**. The scale→px table the checker cited is identical to the one above; only the
+> token→scale half differed. The published docs table at
+> `designsystem.digital.gov/design-tokens/typesetting/font-size/` renders the same nine pairings.
+>
+> Consequences of this being correct, each of which the checker flagged conditionally:
+> - `$theme-h1-font-size: "2xl"` (line 409) = 40px, so **40px `h1` is the USWDS default, not a theme
+>   change.** The `Theme changes in Phase 2: None` line stands and no Discrepancy-register entry is owed.
+> - `$theme-h2-font-size: "xl"` (line 410) = 32px, so the aside is accurate as written.
+> - The named-step gaps (`2xs`→`sm`→`lg`→`2xl`) are USWDS's own non-uniform default ramp
+>   (2, 3, 4, 5, 6, 9, 12, 14, 15), not an incoherence introduced here. Phase 2 selects four of its nine
+>   steps; it does not reshape the ramp.
+> - Following the named tokens therefore yields the declared **14 / 16 / 22 / 40px**, and the
+>   `font-sans-lg` instruction for `h2` is correct.
+
+> ⚠️ **Honest gap (unchanged, and unrelated to the above).** The USWDS default theme also enables `light`
+> (300) — `$theme-font-weight-light: 300`. Phase 2 does not change that setting (it lives in a Phase 1
+> file). The two-weight contract is therefore enforced by **usage discipline, not by configuration**: no
+> Phase 2 component may apply `text-light`, `font-weight: 300`, or `$theme-font-weight-light`. Enforceable
+> by grep over `apps/web/src/pages/` and `apps/web/src/shell/`. If a later phase owns the theme file, set
+> `$theme-font-weight-light: false`.
 
 **Table line height is not declared here.** USWDS Table sets its own; Phase 2 does not override it.
 Stating a ratio we do not control would be a fabricated contract.
@@ -140,7 +185,7 @@ Stating a ratio we do not control would be a fabricated contract.
 
 ## Color
 
-USWDS theme tokens, verified against `uswds-core/src/styles/settings/_settings-color.scss` on 2026-10-06.
+USWDS theme tokens, verified against `uswds-core/src/styles/settings/_settings-color.scss`.
 
 | Role | USWDS theme token | System token | Hex (informative) | Usage |
 |------|-------------------|--------------|-------------------|-------|
@@ -163,7 +208,7 @@ USWDS theme tokens, verified against `uswds-core/src/styles/settings/_settings-c
 
 Accent (`primary`, `#005ea2`) appears **only** on:
 
-1. The single primary `usa-button` per screen region (see *one-primary rule* below).
+1. The single primary `usa-button` per page-level region (see the one-primary rule below).
 2. Text links: version-history links, result deep links, "View record", the side-nav current item.
 3. The selected tab's underline in the Configuration tab strip.
 4. The header search submit button.
@@ -171,15 +216,31 @@ Accent (`primary`, `#005ea2`) appears **only** on:
 Accent is **never** applied to: table rows, table headers, Tag backgrounds, headings, borders between
 sections, severity indicators, or icons that are not links.
 
-**One-primary rule.** At most one `usa-button` rendered in the default (primary/accent) style is visible in
-any one screen region at a time. Everything else is `usa-button--outline` or `usa-button--unstyled`. This
-is the mechanism that actually holds accent to ~10%.
+### The one-primary rule (corrected)
 
-- Configuration, drafting state → primary is **Save draft**. (`Publish` is accent-blocked, see below.)
-- Configuration, approving state → primary is **Publish**. `Save draft` becomes outline.
-- Notification inbox → primary is **Acknowledge** on each row; `Load more` is outline.
-- Search → primary is the header **Search** submit; `Apply filters` is primary within the filter panel,
-  `Clear filters` is unstyled.
+> **Fixes revision block 1b.** The previous wording said "one primary per screen region" and then assigned
+> primary to a per-row `Acknowledge` — which at page size 25 puts **up to 25 accent buttons stacked
+> vertically**, making accent the dominant colour on the inbox. That is the exact failure the rule exists
+> to prevent.
+
+**A "region" is a page-level region. There are exactly two, and repeating list rows are not a region.**
+
+| Region | Primary budget |
+|--------|----------------|
+| Shell header (`AppShell`, present on every screen) | At most **one** — the header Search submit |
+| Page content region | At most **one** |
+| **Repeating list rows (inbox items, search results, table rows)** | **Zero. Never.** Controls repeated once per row are always `usa-button--outline` or `usa-button--unstyled`, regardless of importance. |
+
+| Screen | Page-level primary | Everything else |
+|--------|--------------------|-----------------|
+| Configuration, drafting | **Save draft** | `Add row`, `Submit for approval` (outline); `Discard draft` (secondary/destructive); `Publish` (accent-blocked — see SoD) |
+| Configuration, approving | **Publish** | `Save draft` (outline) |
+| Notification inbox | **None.** The inbox has no page-level primary button. | Per-row `Acknowledge` → **outline**. `Load more` → outline. |
+| Search | **Apply filters** (in the filter panel) | Per-row result actions are links, never buttons. `Clear filters` → unstyled. `Load more` → outline. The header `Search` submit is the shell-header primary and is counted against that region, not this one. |
+
+Declaring the inbox to have no page-level primary is deliberate: there is no single list-level action
+(no "acknowledge all" — each acknowledgement is an individually audited act), so inventing one purely to
+spend the accent budget would be worse than leaving it unspent.
 
 ### The focus ring is not ours
 
@@ -201,108 +262,231 @@ prior version remains retrievable; it is accent, not red.
 below carries a **text label**. Icons are decorative (`aria-hidden="true"`) because the text already
 carries the meaning — never an icon alone, never a colour alone.
 
+> **Fixes revision block 1a.** `.usa-tag` ships `color: white` on a `base-dark` fill. Overriding only the
+> background inherits white text, which fails AA on two of the three fills used here. **Every coloured Tag
+> below now declares its foreground explicitly, with the computed ratio.** Foregrounds are applied with
+> USWDS utilities (`text-ink` / `text-white`), not custom CSS.
+>
+> **Standing rule: a Tag's background may never be changed without re-declaring its foreground and
+> recomputing the contrast ratio.** Three fills here need three different foregrounds; there is no single
+> safe default.
+
 ### Notification severity (`severity`)
 
-| Value | Text label (always rendered) | Colour | USWDS Icon |
-|-------|------------------------------|--------|------------|
-| `info` | `Info` | info / `cyan-30v` | `info` |
-| `warning` | `Warning` | warning / `gold-20v` | `warning` |
-| `critical` | `Critical` | error / `red-warm-50v` | `error` |
+| Value | Text label (always rendered) | Background | Foreground | Ratio | USWDS Icon |
+|-------|------------------------------|-----------|------------|-------|------------|
+| `info` | `Info` | `bg-info` `cyan-30v` `#00bde3` | `text-ink` `#1b1b1b` | **7.70:1** ✓ | `info` |
+| `warning` | `Warning` | `bg-warning` `gold-20v` `#ffbe2e` | `text-ink` `#1b1b1b` | **10.38:1** ✓ | `warning` |
+| `critical` | `Critical` | `bg-error` `red-warm-50v` `#d54309` | `text-white` `#ffffff` | **4.53:1** ✓ | `error` |
 
 ### Delivery status (`status`)
 
-| Value | Text label | Colour | Extra |
-|-------|-----------|--------|-------|
-| `queued` | `Queued` | base (neutral) | — |
-| `sent` | `Sent` | base (neutral) | — |
-| `delivered` | `Delivered` | success | — |
-| `failed` | `Failed` | error | Help text: *"Delivery failed. This alert may have been escalated to a secondary recipient."* |
-| `acknowledged` | `Acknowledged` | success | Acknowledge button removed |
+| Value | Text label | Background | Foreground | Ratio | Extra |
+|-------|-----------|-----------|------------|-------|-------|
+| `queued` | `Queued` | USWDS Tag default `base-dark` `#565c65` | `text-white` (USWDS default) | **6.74:1** ✓ | — |
+| `sent` | `Sent` | USWDS Tag default `base-dark` `#565c65` | `text-white` (USWDS default) | **6.74:1** ✓ | — |
+| `delivered` | `Delivered` | `bg-success` `green-cool-40v` `#00a91c` | `text-ink` `#1b1b1b` | **5.49:1** ✓ | — |
+| `failed` | `Failed` | `bg-error` `red-warm-50v` `#d54309` | `text-white` `#ffffff` | **4.53:1** ✓ | Help text below |
+| `acknowledged` | `Acknowledged` | `bg-success` `green-cool-40v` `#00a91c` | `text-ink` `#1b1b1b` | **5.49:1** ✓ | Acknowledge button removed |
+
+`failed` help text, rendered verbatim: `Delivery failed; this alert may have been escalated` — see **D-10**.
+
+**Rejected pairings, recorded so they are not reintroduced:** white on `green-cool-40v` (3.14:1), white on
+`gold-20v` (1.66:1), and ink on `red-warm-50v` (3.80:1) all fail AA and would trip the build-blocking
+axe-core contrast check.
 
 ### Configuration package state — Y0-patterns "Proposed vs. Confirmed" convention
 
 `Y0-patterns.md` names `Screen-16` (draft vs. published rule package) as an instance of this pattern, so it
 is binding here:
 
-| State | Tag style | Text | Screen-reader text |
-|-------|-----------|------|--------------------|
-| Draft | **Outline** Tag, neutral/base | `Draft v{n}` | *"status: draft, not yet published"* |
-| Published | **Solid-fill** Tag, success | `Published v{n} — effective {date}` | *"status: published"* |
+| State | Tag style | Text | Foreground / ratio | Screen-reader text |
+|-------|-----------|------|--------------------|--------------------|
+| Draft | **Outline** Tag, `base-dark` border + `text-ink` on white | `Draft v{n}` | ink on white, **16.1:1** ✓ | *"status: draft, not yet published"* |
+| Published | **Solid-fill** Tag, `bg-success` | `Published v{n} — effective {date}` | `text-ink`, **5.49:1** ✓ | *"status: published"* |
 
 *"The two styles are never visually similar enough to be confused at a glance."* Outline vs. solid is the
 load-bearing difference — not the colour.
 
 ### Search result object type
 
-Neutral (base) Tag, text only: `Case`, `Party`, `Proceeding`, `Docket event`, `Document`. No colour coding
-by type — colour here would carry no meaning and would dilute the accent budget.
+Neutral USWDS Tag default (`base-dark` fill, white text, 6.74:1), text only: `Case`, `Party`, `Proceeding`,
+`Docket event`, `Document`. No colour coding by type — colour here would carry no meaning and would dilute
+the accent budget.
+
+---
+
+## Screen Layouts & Information Hierarchy
+
+`Screen-16` supplies its own layout and hierarchy table; it is not restated here. Screens 2 and 3 have no
+mockup, so this contract supplies theirs.
+
+### Screen 1 — Configuration Engine
+
+Layout and Information Hierarchy are **as specified in `UX-Mockup/Screen-16-configuration-engine.md`**
+(lines 9–42), with two additions this contract makes (per-tab error counts and the URL-reflected section),
+documented under *Additional tab-strip requirements*.
+
+### Screen 2 — Notification inbox (`/notifications`)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ [shell header: GovBanner · app name · 🔍 search · 🔔 3 · user]    │
+├───────────┬──────────────────────────────────────────────────────┤
+│ Side nav  │ Notifications                                   (h1)  │
+│  Cases    │                                                       │
+│  Audit    │ Filter: ( All ) ( Unacknowledged ) ( Failed )          │
+│  Config   │ ─────────────────────────────────────────────────────│
+│ ▸ Notifs  │ UNACKNOWLEDGED                                 (h2)   │
+│           │ ┌───────────────────────────────────────────────────┐ │
+│           │ │ [Critical] A tracked deadline has crossed a       │ │
+│           │ │            configured threshold.                  │ │
+│           │ │ EDNY · 12 minutes ago · [Sent]                    │ │
+│           │ │ View record →              [ Acknowledge ](outline)│ │
+│           │ └───────────────────────────────────────────────────┘ │
+│           │ ┌───────────────────────────────────────────────────┐ │
+│           │ │ [Warning]  A configuration rule package was       │ │
+│           │ │            published for your court.              │ │
+│           │ │ EDNY · 2 hours ago · [Failed]                     │ │
+│           │ │ Delivery failed; this alert may have been escalated│ │
+│           │ │ View record →              [ Acknowledge ](outline)│ │
+│           │ └───────────────────────────────────────────────────┘ │
+│           │ ACKNOWLEDGED                                   (h2)   │
+│           │ …                                                     │
+│           │                      [ Load more ](outline)            │
+└───────────┴──────────────────────────────────────────────────────┘
+```
+
+| Priority | Content | Placement |
+|----------|---------|-----------|
+| Primary | **Unacknowledged items** — the focal point. Grouped first, always above acknowledged items. | Top of the list region |
+| Primary | Severity, as a leading Tag on every row | Row start, immediately before the description |
+| Secondary | The generic `type_description` — the row's heading and the link target | Row heading line |
+| Secondary | Acknowledge control | Row end |
+| Tertiary | Court name · relative timestamp · delivery-status Tag | Row meta line, below the heading |
+| Tertiary | Filter control | Above the list |
+
+**Row reading order is: severity → description → meta → actions.** Severity leads because the recipient is
+triaging risk and severity is the scan dimension; the description is the heading because it is the
+meaningful text and the correct link target. The two are adjacent, so a screen reader announces
+*"Critical, A tracked deadline has crossed a configured threshold"* as one coherent unit.
+
+### Screen 3 — Search (`/search`)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ [shell header: GovBanner · app name · 🔍 [search input][Search] ] │
+├───────────┬──────────────────────────────────────────────────────┤
+│ Side nav  │ Search results                                  (h1)  │
+│           │ ┌─ Filters ───────────────────────────── [collapse] ┐ │
+│           │ │ Keywords [______]  Identifier [______]            │ │
+│           │ │ Party name [______]  Witness name [______]        │ │
+│           │ │ Status [▾]  Proceeding [combo ▾]                  │ │
+│           │ │ ⟨fieldset: Date range⟩ From [__] To [__]          │ │
+│           │ │        [ Apply filters ](primary) [Clear filters] │ │
+│           │ └───────────────────────────────────────────────────┘ │
+│           │ ⚠ One filter is not available in this deployment      │
+│           │   This court's deployment cannot search by Witness    │
+│           │   name. That filter was ignored. Every other filter   │
+│           │   you entered was applied.                            │
+│           │ ─────────────────────────────────────────────────────│
+│           │ 30 results                            ⟨aria-live⟩     │
+│           │ [Case] United States v. ███████  …snippet…            │
+│           │        updated 3 days ago                             │
+│           │ [Party] ███████  …snippet…                            │
+│           │                      [ Load more ](outline)            │
+└───────────┴──────────────────────────────────────────────────────┘
+```
+
+**Region order is binding:** `h1` → filter panel → unsupported-filters notice → count line → results **or**
+empty state.
+
+The filter panel sits **above the results, full width**, not in a left rail — the shell already owns the
+left rail, and a second one would compete with it and reflow badly at mobile. It is collapsible and
+expanded by default on the results page.
+
+The unsupported-filters notice sits **between the filter panel and the results**: immediately after the
+thing it describes (the query) and above the thing it must never be confused with (the results). It is
+outside the `aria-live` region.
+
+| Priority | Content | Placement |
+|----------|---------|-----------|
+| Primary | **Result rows** — the focal point | Below the count line |
+| Primary | Unsupported-filters notice, when present | Between filters and count line, outside the live region |
+| Secondary | Filter panel (complete documented set, always rendered) | Directly below `h1` |
+| Secondary | Result count | Immediately above the first row, inside the live region |
+| Tertiary | Object-type Tag, last-updated | Within each row |
 
 ---
 
 ## Copywriting Contract
 
-Where the FRD or `Screen-16` specifies wording, it is reproduced **verbatim** and marked *(FRD)*. Error
-messages branch on the stable `error_code`, never on message text.
+Where the FRD, `Y2-errors.md` or `Screen-16` specifies wording, it is reproduced **verbatim** and attributed
+to its actual source. Error handling branches on the stable `error_code`, never on message text.
 
 ### Primary CTAs
 
-| Screen | Primary CTA | Secondary actions |
-|--------|-------------|-------------------|
-| Configuration (drafting) | **Save draft** | `Add row` (outline), `Discard draft` (secondary/destructive), `Submit for approval` (outline) |
+| Screen | Page-level primary | Secondary actions |
+|--------|--------------------|-------------------|
+| Configuration (drafting) | **Save draft** | `Add row`, `Submit for approval` (outline); `Discard draft` (secondary/destructive) |
 | Configuration (approving) | **Publish** | `Save draft` (outline) |
-| Notification inbox | **Acknowledge** | `Load more` (outline), `View record` (link) |
-| Search | **Search** (header) / **Apply filters** (panel) | `Clear filters` (unstyled), `Load more` (outline) |
+| Notification inbox | *(none — see one-primary rule)* | `Acknowledge` (outline, per row), `Load more` (outline), `View record` (link) |
+| Search | **Apply filters** | `Search` (shell-header primary), `Clear filters` (unstyled), `Load more` (outline) |
 
 ### Empty states
 
 | Surface | Heading | Body |
 |---------|---------|------|
-| **Search, zero results** | `No results` | `No records match this search. Check your spelling, broaden the date range, or remove a filter.` — **constant, no interpolation.** See the Two-Notice Contract. |
+| **Search, zero results** | `No matching records` | `No records match this search. Check your spelling, broaden the date range, or remove a filter.` — **constant, no interpolation.** See the Two-Notice Contract. |
 | Notification inbox, empty | `You have no notifications` | `Alerts addressed to you will appear here.` |
 | Notification inbox, filter yields nothing | `No notifications match this filter` | `Change the filter to see your other notifications.` |
 | Version history, only v1 exists | `No prior versions` | `This court's configuration has been published once. Earlier versions will appear here after the next publish.` |
 | Approver Select, no eligible approver | *(warning Alert, not an empty state)* | `No other user in this court holds the entitlement required to approve this package. A second holder must be granted the entitlement before this configuration can be published.` |
-| Configuration, no entitlement | *(info Alert over a disabled surface)* | `You do not have configuration administration access` *(FRD, `CONFIG_EDIT_DENIED`)* |
+| Configuration, no entitlement | *(info Alert over a disabled surface)* | `You do not have configuration administration access` — *source: `Screen-16` line 51 (`CONFIG_EDIT_DENIED`)*. `Y2-errors.md` would give the generic *"You are not authorized to perform this action"*; the screen-specific string is preferred because it names the capability the user lacks. |
 
 Every empty state is a rendered USWDS Alert with an explanation and a next step. **A blank region is never
 acceptable** — Phase 1 established this for the Audit Explorer and it carries forward.
 
 ### Error states
 
-| Code | Message | Placement |
-|------|---------|-----------|
-| `CONFIG_THRESHOLD_GAP` | `Threshold tiers must be contiguous and non-overlapping` *(FRD)* + concrete hint `Gap detected: {a}–{b} unclassified`, derived from the issue's own values | Inline, **directly under the offending table row** |
-| `CONFIG_AMBIGUOUS_MAPPING` | `Event code {code} is mapped to multiple categories` *(FRD)* | Inline, on the duplicate mapping row |
-| `CONFIG_INVALID_STRUCTURE` | `Workflow state sets must have at least one terminal state and no unreachable states` *(FRD)* | Per row for an unreachable state / dangling transition; once at group level for "no terminal state" |
-| `CONFIG_SOD_VIOLATION` | `A second approver is required to publish this configuration` *(FRD)* | Helper text beside the Publish control (see Tooltip finding) |
-| `CONFIG_DRAFT_CONFLICT` (409) | `This draft was changed by someone else. Reload to continue.` — **never auto-merge** | Blocking Alert at top of the editor |
-| `CONFIG_DRAFT_EXISTS` (409) | `A draft already exists for this package type. Open it to continue editing.` | Alert with an action link to the existing draft |
-| `NOTIFY_INVALID_TRANSITION` (409) | Server message, surfaced unchanged | `ApiErrorAlert` above the list; optimistic update rolls back |
-| `NOTIFY_NOT_FOUND` (404) | Server message, surfaced unchanged | `ApiErrorAlert` |
-| `SEARCH_INVALID_QUERY` (400) | Server message | `ApiErrorAlert` above the results region |
-| `SEARCH_INDEX_UNAVAILABLE` (503) | Server message | `ApiErrorAlert` — **renders as an error, never as an empty result** |
-| `SECURITY_POLICY_UNAVAILABLE` (503) | Server message | `ApiErrorAlert` — **renders as an error, never as an empty result** |
+| Code | Message | Source | Placement |
+|------|---------|--------|-----------|
+| `CONFIG_THRESHOLD_GAP` | `Threshold tiers must be contiguous and non-overlapping` + concrete hint `Gap detected: {a}–{b} unclassified`, derived from the issue's own values | `Screen-16` l.48 | Inline, **directly under the offending table row** |
+| `CONFIG_AMBIGUOUS_MAPPING` | `Event code {code} is mapped to multiple categories` | `Screen-16` l.49 | Inline, on the duplicate mapping row |
+| `CONFIG_INVALID_STRUCTURE` | `Workflow state sets must have at least one terminal state and no unreachable states` | `Screen-16` l.50 | Per row for an unreachable state / dangling transition; once at group level for "no terminal state" |
+| `CONFIG_SOD_VIOLATION` | `A second approver is required to publish this configuration` | `Screen-16` l.52 | Permanent visible helper text beside the Publish control |
+| `CONFIG_DRAFT_CONFLICT` (409) | `This draft was changed by someone else. Reload to continue.` — **never auto-merge** | plan 02-13 | Blocking Alert at top of the editor |
+| `CONFIG_DRAFT_EXISTS` (409) | `A draft already exists for this package type. Open it to continue editing.` | this contract | Alert with an action link to the existing draft |
+| `NOTIFY_INVALID_TRANSITION` (409) | Server message, surfaced unchanged | server | `ApiErrorAlert` above the list; optimistic update rolls back |
+| `NOTIFY_NOT_FOUND` (404) | Server message, surfaced unchanged — **client composes nothing** | server | `ApiErrorAlert` |
+| `SEARCH_INVALID_QUERY` (400) | Server message | server | `ApiErrorAlert` above the results region |
+| `SEARCH_INDEX_UNAVAILABLE` (503) | `Search is temporarily unavailable. Your search was not run. Try again in a few minutes.` | `Y2-errors.md` pattern *"{Service} is temporarily unavailable"* + recovery instruction | `ApiErrorAlert` — **renders as an error, never as an empty result** |
+| `SECURITY_POLICY_UNAVAILABLE` (503) | `The security policy service is temporarily unavailable. Your search was not run. Try again in a few minutes.` | same | `ApiErrorAlert` — **renders as an error, never as an empty result** |
+
+Both 503 strings state **"Your search was not run"** explicitly. Without it a user can read a failed query
+as a zero-result query, which is the single most dangerous misreading on this screen.
 
 **Binding rule on the two 503s:** an empty list on policy failure would silently hide everything while
 looking normal. The empty state renders **only** on a successful response with `total_count === 0`.
 
 **Binding rule on 404 from a deep link:** the client renders the server's message unchanged and composes no
 explanatory text of its own. Translating a deliberate existence-hiding 404 into "you lack access" would
-confirm that a sealed matter exists. `Y2-errors.md` Principle 3.
+confirm that a sealed matter exists. `Y2-errors.md` Principle 3. *This deferral to the server is
+deliberate and must not be "improved" into a friendlier client-side message.*
 
 ### Destructive confirmation
 
 | Action | Approach |
 |--------|----------|
-| **Discard draft** | USWDS Modal. Heading: `Discard this draft?` Body: `All unsaved and saved changes in this draft will be permanently removed. The currently published configuration is not affected.` Buttons: `Discard draft` (secondary/red) · `Keep editing` (outline). Focus moves to the Modal; Escape and the outline button both cancel. |
-| **Publish** | **No confirmation Modal.** The separation-of-duties gate *is* the confirmation — a second human deliberately authenticated to perform it. Instead, the Publish panel renders `Y0-patterns.md`'s **Explicit Human Attribution Line** inline and immediately above the button, as plain text: `Drafted by: {drafter}. Approving as: {approver} (you).` followed by `Takes effect: {immediately / on {date}}.` and `Existing calculations referencing v{prior} are not retroactively recalculated.` The approver sees exactly what they are attesting to before clicking. |
+| **Discard draft** | USWDS Modal. Heading: `Discard this draft?` Body: `All unsaved and saved changes in this draft will be permanently removed. The currently published configuration is not affected.` Buttons: `Discard draft` (secondary/red) · `Keep editing` (outline). Focus moves to the Modal; Escape and the outline button both cancel; focus returns to the invoking control. |
+| **Publish** | **No confirmation Modal.** The separation-of-duties gate *is* the confirmation — a second human deliberately authenticated to perform it. Instead the Publish panel renders `Y0-patterns.md`'s **Explicit Human Attribution Line** inline, immediately above the button, as plain text: `Drafted by: {drafter}. Approving as: {approver} (you).` then `Takes effect: {immediately / on {date}}.` then `Existing calculations referencing v{prior} are not retroactively recalculated.` |
 | **Acknowledge** | No confirmation. Acknowledgement is audited and the record persists; friction here would delay the exact action the escalation sweeper is waiting for. |
 
 ### Unsaved changes
 
 Navigating away from the Configuration editor with unsaved edits opens a USWDS Modal: heading
 `You have unsaved changes`, body `Leave this page and lose your unsaved configuration changes?`, buttons
-`Leave` (secondary) · `Stay on this page` (outline). Wired via the React Router blocker **and**
+`Leave page` (secondary) · `Stay on this page` (outline). Wired via the React Router blocker **and**
 `beforeunload`.
 
 ---
@@ -342,27 +526,21 @@ export function SearchEmptyState(): JSX.Element;
 - The **count line renders only when `total_count > 0`.** There is no "0 results" line to diverge.
 - The `<h1>` is the constant `Search results` — never `{n} results for {term}`.
 - **`document.title` is the constant `Search — JudicialSync`** — it never contains the count or the query.
-  A differing tab title is a real leak channel and neither plan 02-15 nor `Screen-16` mentions it.
+  A differing tab title is a real leak channel and is unaddressed in all three plans.
 - **No placeholder rows exist in any component.** A record the viewer may not see is simply absent from
   `results`. There is no "restricted" row type, and adding one would violate `00-overview.md` principle 5.
-
-> ⚠️ **Deliberate strengthening over plan 02-15.** That plan gives `SearchEmptyState` a `queryText` prop and
-> has the Playwright assertion normalise the echoed text out before comparing. This contract removes the
-> prop entirely, so byte-identity is **structural rather than test-normalised**. The query is already
-> visible in the header input and the URL; echoing it adds nothing and introduces the only variable into a
-> component whose entire purpose is invariance. Recorded as a discrepancy below.
 
 ### Unsupported-filters notice — the copywriting contract
 
 Plan 02-15's proposed wording is **rejected by this contract**:
 
 > ~~"**Some filters are not searchable in this deployment.** `Witness name` was not applied. Results below
-> reflect your other criteria."~~
+> reflect your other criteria."~~ *(plan 02-15 lines 243–245)*
 
 Two defects. It opens with **"Some"**, the exact word that primes "some results". And **"Results below
 reflect your other criteria"** is false when there are zero results below — when both notices co-render it
-reads *"Results below reflect your other criteria / No results"*, which is self-contradictory and invites
-precisely the "results were withheld" reading.
+reads *"Results below reflect your other criteria / No matching records"*, which is self-contradictory and
+invites precisely the "results were withheld" reading.
 
 **Required copy** — the subject is always the filter or the deployment, never the results:
 
@@ -378,8 +556,11 @@ precisely the "results were withheld" reading.
 - The wording is identical whether the result count is 0 or 500 — it is a statement about the deployment's
   capability, which does not vary with data.
 - Co-rendering is the truthful combination and is **not** special-cased in code. The page reads:
-  *"One filter is not available in this deployment…"* then *"No results"*. Each sentence is independently
-  true and neither modifies the other.
+  *"One filter is not available in this deployment…"* then *"No matching records"*. Each sentence is
+  independently true and neither modifies the other.
+
+> ⚠️ This copy **fails plan 02-15's own verify command**, which greps for `not applied\|not searchable`.
+> Recorded as **D-9**; requires a human decision before planning consumes this contract.
 
 ### Filter panel
 
@@ -398,8 +579,9 @@ requirements axe **cannot** catch, and they are contractual.
 | Concern | Requirement for Phase 2 |
 |---------|-------------------------|
 | **1.4.1 Colour alone** | Every severity, status and draft/published indicator carries a text label. See the Indicator Contract. |
-| **2.1.1 Keyboard** | Every control reachable and operable by keyboard. The Configuration tab strip implements the full WAI-ARIA Tabs keyboard contract (below). |
-| **2.4.3 / 2.4.7 Focus** | DOM order matches visual order in every table and grid. USWDS focus ring never overridden. Modal traps focus and restores it to the invoking control on close. |
+| **1.4.3 Contrast** | Every coloured Tag declares its foreground and its computed ratio. No background may change without re-declaring both. |
+| **2.1.1 Keyboard** | Every control reachable and operable by keyboard. The Configuration tab strip implements the full WAI-ARIA Tabs keyboard contract. |
+| **2.4.3 / 2.4.7 Focus** | DOM order matches visual order in every table and grid. USWDS focus ring never overridden. Modals trap focus and restore it to the invoking control on close. |
 | **3.3.1 / 3.3.3 Errors** | Every inline validation Alert is adjacent to its offending row, names the specific problem, and gives a corrective instruction. Never a generic "an error occurred". |
 | **3.3.2 Labels** | Every editable table cell has a programmatic label — a visually-hidden `<label>` combining the column header and the row identifier (e.g. *"Approaching tier, maximum days"*). A `<th scope="col">` alone does not label an `<input>` inside a `<td>`. |
 | **4.1.2 / 4.1.3 Live regions** | The search results region and the inbox list are `aria-live="polite"`. Newly polled notifications are announced without stealing focus. The unsupported-filters notice sits **outside** the live region. |
@@ -412,34 +594,38 @@ requirements axe **cannot** catch, and they are contractual.
 ### Manual gate addition
 
 `Y2-accessibility.md` requires a manual screen-reader pass over and above the automated gate. Phase 2 adds
-**one** item to that manual pass: the **Configuration tab strip and its inline validation**, because a
-custom ARIA widget containing form fields with inline errors is precisely what automated tooling cannot
-fully evaluate. This is a named deliverable, not a suggestion.
+**one** item: the **Configuration tab strip and its inline validation**, because a custom ARIA widget
+containing form fields with inline errors is precisely what automated tooling cannot fully evaluate. This
+is a named deliverable, not a suggestion.
 
 ### ⚠️ Finding: Tooltip on a disabled button is unreachable
 
 `Screen-16` requires *"Publish button disabled + Tooltip"*. **A `disabled` HTML button is not focusable, so
 a tooltip triggered by hover or focus never reaches a keyboard or screen-reader user** — the explanation for
-why the primary action is blocked would be sighted-mouse-only. In a Section 508 context that is a defect,
-not a nuance.
+why the primary action is blocked would be sighted-mouse-only. In a Section 508 context that is a defect.
 
-`Y2-accessibility.md` already anticipates this and states the resolution: *"disabled submit buttons carry
-`aria-disabled` + visible Tooltip text (not title-attribute-only)."*
+`Y2-accessibility.md` already states the resolution: *"disabled submit buttons carry `aria-disabled` +
+visible Tooltip text (not title-attribute-only)."*
 
-**Contract — the Publish control when the viewer is the drafter:**
+**Contract — the Publish control when blocked:**
 
 - Rendered with **`aria-disabled="true"`, not the `disabled` attribute**, so it stays focusable and
   announced.
-- The click handler is a **no-op** — it issues no request. Structurally blocked, exactly as
-  `Screen-16` and `Y0-patterns.md`'s *Separation-of-Duties Visual Block* require.
-- The explanation `A second approver is required to publish this configuration` is rendered as **visible
-  helper text** permanently beside the button, associated via `aria-describedby`. The USWDS Tooltip is
-  additive, never the sole carrier of the message.
+- The click handler is a **no-op** — it issues no request. Structurally blocked, exactly as `Screen-16` and
+  `Y0-patterns.md`'s *Separation-of-Duties Visual Block* require.
+- **SoD block:** the explanation `A second approver is required to publish this configuration` is rendered
+  as **visible helper text** permanently beside the button, associated via `aria-describedby`. The USWDS
+  Tooltip is additive, never the sole carrier.
+- **Validation block:** helper text names the blocking issue count and the tab(s) holding them. Because
+  permanent helper text alone is weaker feedback here, **activating the no-op control moves focus to the
+  blocking-issue summary**, and from there to the first erroring tab. A user who clicks a blocked control
+  must learn something; silence is not acceptable feedback.
 - Styled with USWDS disabled appearance; the focus ring is preserved.
 - The server's `403 CONFIG_SOD_VIOLATION` remains the independent backstop. The two must agree.
 
-Also `aria-disabled` when any validation issue exists, with helper text naming the blocking issue count and
-the tab(s) they are on.
+**Scope note:** this applies to the **Publish** control only. The read-only surface shown to a user without
+the configuration entitlement legitimately uses the real `disabled` attribute on its inputs — those controls
+have nothing to explain beyond the single page-level Alert, and non-focusable is correct there.
 
 ---
 
@@ -449,13 +635,35 @@ the tab(s) they are on.
 registry, no `shadcn view`, and no third-party block to vet. The equivalent risk in a USWDS/508 context is a
 **custom component**, which is inventoried and justified instead.)*
 
+### Verification basis (provenance)
+
+This repository has **no `package.json`, no `node_modules`, and no vendored USWDS source** — nothing was
+inspected locally. All USWDS claims in this document were verified on **2026-10-06** against:
+
+- **`github.com/uswds/uswds`, branch `develop` (the 3.x line)** — `_settings-typography.scss`,
+  `_settings-color.scss`, `tokens/font/type-scale.scss`, `tokens/color/*`, and the `packages/` manifest.
+- **`github.com/trussworks/react-uswds`, branch `main`** — the `src/components/` manifest.
+- The published token tables at `designsystem.digital.gov/design-tokens/`.
+
+**Exact resolved versions are not yet knowable**: plan 01-13 pins `@uswds/uswds@^3` and
+`@trussworks/react-uswds` at *"latest stable"*, so the lockfile does not exist until Phase 1 executes.
+Re-confirm against the installed versions at execution time.
+
+**Two export names to confirm at execution time** — both are depended on by the inbox and search result
+lists, and a rename would be a silent build break:
+
+| Symbol | Risk |
+|--------|------|
+| `Select` | Historically exported as **`Dropdown`** in `@trussworks/react-uswds`; renamed in a later major. Confirm which name the pinned version exports. |
+| `Collection` / `CollectionItem` | Present in the `main` manifest, but a relatively recent addition. Confirm availability in the pinned version; if absent, fall back to a USWDS `usa-card` list or an unstyled list with the same ARIA and the same information hierarchy. |
+
 ### Screen 1 — Configuration Engine (`/admin/config/:courtId`)
 
 | USWDS component | trussworks export | Use |
 |---|---|---|
 | Tag | `Tag` | Draft (outline) / Published (solid) version state |
 | Table | `Table` | Thresholds, workflow states, event mappings — editable rows |
-| Text input / Select / Label / Hint / Error message | `TextInput`, `Select`, `Label`, `ErrorMessage` | Editable cells, approver picker, numbering fields |
+| Text input / Select / Label / Hint / Error message | `TextInput`, `Select` ⚠️, `Label`, `ErrorMessage` | Editable cells, approver picker, numbering fields |
 | Fieldset / Legend | `Fieldset` | Workflow-state groups, effective-date choice |
 | Alert | `Alert` | Inline validation (error), read-only denied (info), draft conflict (error) |
 | Button | `Button` | Save draft, Publish, Add row, Discard draft, Submit for approval |
@@ -463,16 +671,16 @@ registry, no `shadcn view`, and no third-party block to vet. The equivalent risk
 | Modal | `Modal` | Discard-draft confirmation, unsaved-changes guard |
 | Summary box | `SummaryBox` | Currently-effective version, version history |
 | Date picker | `DatePicker` | `effective_from` scheduling |
-| **Tab strip** | **none — see below** | Numbering / Workflow States / Thresholds / Event Mappings |
+| **Tab strip** | **none — see custom register** | Numbering / Workflow States / Thresholds / Event Mappings |
 
 ### Screen 2 — Notification inbox (`/notifications`, `/go/:objectType/:objectId`)
 
 | USWDS component | trussworks export | Use |
 |---|---|---|
-| **Collection** | `Collection`, `CollectionItem` | The inbox list — purpose-built for a list of dated items with meta tags. Preferred over a hand-rolled list. |
+| **Collection** | `Collection`, `CollectionItem` ⚠️ | The inbox list — purpose-built for dated items with meta tags |
 | Tag | `Tag` | Severity and delivery status |
 | Icon | `Icon` | Severity glyph, `aria-hidden` |
-| Button | `Button` | Acknowledge, Load more, header bell |
+| Button | `Button` | Acknowledge (outline), Load more (outline), header bell |
 | Alert | `Alert` | Empty state (info), errors, unknown deep-link type |
 | Link | `Link` | "View record" deep link |
 | Header | `Header` | Bell mounted in the existing shell header |
@@ -483,28 +691,43 @@ registry, no `shadcn view`, and no third-party block to vet. The equivalent risk
 |---|---|---|
 | Search | `Search` | Persistent header input. **Submit only — no type-ahead** (rejected on §7.6 timing-side-channel and per-keystroke OPA-cost grounds). |
 | Form / Fieldset / Legend / Label | `Form`, `Fieldset`, `Label` | Filter panel, date-range fieldset with legend |
-| Text input / Select | `TextInput`, `Select` | `identifier`, `party_name`, `witness_name`, `status` |
+| Text input / Select | `TextInput`, `Select` ⚠️ | `identifier`, `party_name`, `witness_name`, `status` |
 | Date range picker | `DateRangePicker` | `date_from` / `date_to` |
 | Combo box | `ComboBox` | `proceeding_id` — matches `Screen-17`'s precedent for entity pickers |
-| **Collection** | `Collection` | Result rows — type tag, snippet, last-updated, deep link |
+| **Collection** | `Collection` ⚠️ | Result rows — type tag, snippet, last-updated, deep link |
 | Tag | `Tag` | Object type |
 | Alert | `Alert` | Empty state (info), unsupported filters (warning), errors |
-| Button | `Button` | Apply filters, Clear filters, Load more |
+| Button | `Button` | Apply filters (primary), Clear filters (unstyled), Load more (outline) |
 
 ### ⚠️ Custom component register
 
 **Exactly one custom component is permitted in Phase 2.**
 
-| Component | Why custom | Risk | Required mitigations |
-|---|---|---|---|
-| `ConfigSectionTabs` | **USWDS 3.x does not ship a Tabs component, and neither does `@trussworks/react-uswds`.** Verified against both package manifests on 2026-10-06. `Screen-16` names "USWDS components: Tabs" and `Y2-accessibility.md` refers to "USWDS Button, Accordion, Tabs" — **both are mistaken; no such component exists.** | A hand-rolled ARIA widget is the single most likely source of a Section 508 defect in this phase. | (1) Implement the WAI-ARIA APG Tabs pattern exactly. (2) **Manual activation** (arrow keys move focus; Enter/Space activates) — mandatory because the panels contain form fields; automatic activation would swap panels on every arrow key with unsaved edits present. (3) Roving `tabindex` (`0` on selected, `-1` on others); Home/End supported. (4) `role="tablist"` / `role="tab"` / `role="tabpanel"`, `aria-selected`, `aria-controls`, `aria-labelledby`. (5) Styled **only** with USWDS utilities and tokens — no new colours. (6) Selected state carries an underline **and** bold weight **and** `aria-selected`, never colour alone. (7) Added to the manual screen-reader gate. (8) Dedicated axe run per panel. |
+| Component | Why custom | Risk |
+|---|---|---|
+| `ConfigSectionTabs` | **USWDS 3.x does not ship a Tabs component, and neither does `@trussworks/react-uswds`.** Verified against both published manifests (see *Verification basis*). `Screen-16` line 32 names "USWDS components: Tabs" and `Y2-accessibility.md` row 1 refers to "USWDS Button, Accordion, Tabs" — **both are mistaken; no such component exists.** | A hand-rolled ARIA widget is the single most likely source of a Section 508 defect in this phase. |
+
+**Required mitigations:**
+
+1. Implement the WAI-ARIA APG Tabs pattern exactly.
+2. **Manual activation** — arrow keys move focus, Enter/Space activates. Mandatory because the panels
+   contain form fields; automatic activation would swap panels on every arrow key with unsaved edits.
+3. Roving `tabindex` (`0` on selected, `-1` on others); Home/End supported.
+4. `role="tablist"` / `role="tab"` / `role="tabpanel"`, with `aria-selected` on each tab and
+   `aria-controls` from tab → panel.
+5. `aria-labelledby` on each **panel**, pointing at its controlling tab.
+6. **`aria-label` on the `tablist` itself** (e.g. `aria-label="Configuration sections"`). Required by the
+   APG and easy to omit; without it the widget is announced as an unnamed tab list.
+7. Styled **only** with USWDS utilities and tokens — no new colours, no custom CSS.
+8. Selected state carries an underline **and** bold weight **and** `aria-selected` — never colour alone.
+9. Added to the manual screen-reader gate; dedicated axe run per panel.
 
 **Alternative, if zero custom components is preferred:** USWDS **Accordion** is shipped, accessible, and
 named in `Y2-accessibility.md` as keyboard-operable. Four stacked accordion sections would satisfy the same
 information architecture with no custom code, at the cost of deviating from `Screen-16`'s tabbed layout.
-This contract recommends the custom tab strip (it preserves the specified IA and keeps all four sections
-one keystroke apart during an editing session), but records the fallback as a legitimate option if the
-executor judges the 508 risk unacceptable.
+This contract recommends the custom tab strip (it preserves the specified IA and keeps all four sections one
+keystroke apart during an editing session), but records the fallback as legitimate if the executor judges
+the 508 risk unacceptable.
 
 ### Additional tab-strip requirements (not in Screen-16 or the plans)
 
@@ -513,13 +736,31 @@ control is *"always visible"*. That creates a requirement neither the mockup nor
 **errors on a tab that is not currently displayed**. If Thresholds has a gap while the user is on Numbering,
 `Publish` is blocked with no visible cause.
 
-**Contract:** each tab label carries an error count that is text, not just colour —
-`Thresholds (2 errors)` — with an accessible name of `Thresholds, 2 errors`. The Publish helper text names
-the tabs holding blocking issues. The selected tab is reflected in the URL (`?section=thresholds`) so an
-inline error is linkable and a reload does not lose place.
+**Contract:** each tab label carries an error count that is text, not just colour — `Thresholds (2 errors)` —
+with an accessible name of `Thresholds, 2 errors`. The Publish helper text names the tabs holding blocking
+issues, and activating the blocked control moves focus to them. The selected tab is reflected in the URL
+(`?section=thresholds`) so an inline error is linkable and a reload does not lose place.
 
 **Tab switching never discards edits.** The draft is one client-side model validated as a whole; switching
 sections changes which part of it is displayed, nothing more.
+
+---
+
+## Shared Validation Package (binding)
+
+Inline client-side validation **imports** its rules; it never restates them.
+
+- Package: **`@judicialsync/config-schema`** (plan 02-02), imported by both the NestJS server and the React
+  client.
+- Entry point: `validateRulePackage(draft)` → `ConfigValidationIssue[]`, each issue carrying a `path` the
+  tab uses to place its inline Alert, plus the values the message interpolates.
+- `CONFIG_THRESHOLD_GAP`, `CONFIG_AMBIGUOUS_MAPPING` and `CONFIG_INVALID_STRUCTURE` are defined alongside the
+  refinement that raises them.
+- **No Phase 2 component may hand-roll a validation rule or restate a rule's prose.** A tab needing a new
+  rule adds it to the package, not to the component. CONTEXT: *"'mirrors' is the two-implementations-that-
+  drift shape Phase 1 refused."*
+- Error message text rendered inline comes from the issue, interpolated with the issue's own values — never
+  hardcoded in the component.
 
 ---
 
@@ -529,7 +770,7 @@ CONTEXT left these to judgment. Resolved here so the planner and executor do not
 
 | Item | Decision | Rationale |
 |---|---|---|
-| **Config draft autosave** | **No autosave.** Explicit `Save draft`, plus a save-state indicator reading `Unsaved changes` or `Saved {time}`. | A draft under maker-checker is a legally consequential artifact; silently persisting half-typed threshold values that a colleague may then be asked to approve is wrong. Autosave would also collide with plan 02-13's `expected_updated_at` optimistic concurrency, firing `CONFIG_DRAFT_CONFLICT` alerts mid-typing. ⚠️ Deviates from `Screen-16`'s *"autosave indicator"* — honours the intent (the user always knows persistence state) without autosaving. |
+| **Config draft autosave** | **No autosave.** Explicit `Save draft`, plus a save-state indicator reading `Unsaved changes` or `Saved {time}`. | A draft under maker-checker is a legally consequential artifact; silently persisting half-typed threshold values that a colleague may then be asked to approve is wrong. Autosave would also collide with plan 02-13's `expected_updated_at` optimistic concurrency, firing `CONFIG_DRAFT_CONFLICT` alerts mid-typing. ⚠️ Deviates from **`Screen-16` line 47** — honours the intent (the user always knows persistence state) without autosaving. See D-7. |
 | **Drafts per package type** | One open draft per court per package type. A second attempt returns `CONFIG_DRAFT_EXISTS` and the UI offers to open the existing one. | Consistent with plan 02-13. |
 | **`effective_from` presentation** | Radio group in the Publish panel: `Take effect immediately` (default) · `Schedule for a future date` + USWDS DatePicker. When scheduled, a SummaryBox states which version remains effective until then. | A future-dated publish otherwise looks like nothing happened. |
 | **Search pagination** | Cursor-based, page size 25, `Load more` appends. Count line `{n} results` renders only when `n > 0`. | Matches plan 02-15; the count-line condition closes a divergence channel. |
@@ -551,28 +792,56 @@ interpolation of any kind.** This is what makes the content policy structural ra
 | `delivery_failed_escalation` | `An alert was not acknowledged within the configured window and has been escalated to you.` |
 | `exception_raised` | `A processing exception requires attention.` |
 
-Each row renders this string, the severity Tag, the court name, the relative timestamp, the delivery-status
-Tag, and a `View record` deep link. **Nothing else.** `InboxItem` carries no `object_id`, no `case_id`, no
-caption and no party field — a field that is not in the type cannot be rendered by accident.
+### What the inbox row renders — precise statement
+
+CONTEXT defines the **closed template context** as five fields: `notification_type`, `severity`, generic
+type description, deep link, court name. The inbox renders six things. To be exact rather than approximate:
+
+> **The inbox render context is the closed template context *plus delivery metadata*.** The additions —
+> `status`, `created_at`, `sent_at`, `acknowledged_at` — are facts about the *delivery*, not about the
+> *record*. They carry no case, party, or exhibit content, so the content policy holds; but they are not
+> part of the five-field template context and should not be described as if they were.
+
+Two further precisions:
+
+- *"`InboxItem` carries no `object_id`"* is **literally true of the field list**, and that is the useful
+  guarantee — no component can render a bare identifier. The object's type and id are nonetheless present
+  **inside `deep_link`**, because a link must address the record it opens. The link carries **zero
+  authority**: it is a plain application URL, and following it enters the normal authenticated flow.
+- The row renders **nothing outside** that set. No caption, no party name, no case number, no snippet.
 
 ---
 
 ## Discrepancies With Already-Written Plans
 
 Plans 02-13, 02-14 and 02-15 are already written. Per the phase instructions these are surfaced rather than
-silently changed. **This contract does not authorise editing those plans** — it makes the conflicts visible
-so a human can decide.
+silently changed.
 
-| # | Plan | Plan says | This contract says | Severity |
-|---|------|-----------|--------------------|----------|
-| D-1 | 02-13 | Uses "USWDS `Tabs`" as though it were a shipped component | **No Tabs component exists** in USWDS 3.x or `@trussworks/react-uswds`. A justified custom `ConfigSectionTabs` is required, with the APG keyboard contract and a manual SR pass. | **High** — the plan cannot be executed as literally written |
-| D-2 | 02-13 | Test 7: *"assert the `Publish` button has the `disabled` attribute"* | Must be **`aria-disabled="true"`**, not `disabled`, or the tooltip explaining the SoD block is unreachable by keyboard and screen reader. `Y2-accessibility.md` already mandates `aria-disabled`. The test assertion must change. | **High** — as written, the plan's own test would lock in a 508 defect |
-| D-3 | 02-15 | `SearchEmptyState({ queryText })`, with the Playwright assertion normalising the echo out | **No props at all.** Byte-identity becomes structural rather than test-normalised. | Medium — strengthens the phase's most security-critical UI guarantee |
-| D-4 | 02-15 | Notice copy: *"**Some** filters… Results below reflect your other criteria."* | Rejected. Opens with "Some" (primes "some results") and asserts something false when zero results render. Replaced with filter-subject copy that never uses the word *results*. | Medium — this is the exact confusion CONTEXT asked to be designed out |
-| D-5 | 02-15 | Count rendered above the list as `{total_count} results` | Count line renders **only when `total_count > 0`**; no "0 results" line exists to diverge. | Low |
-| D-6 | 02-15 | — (not mentioned) | **`document.title` must be constant**, never containing count or query. An unaddressed existence-leak channel. | Medium |
-| D-7 | 02-13 | *"autosave indicator"* carried from `Screen-16` | No autosave; explicit save with a save-state indicator. | Low — intent preserved |
-| D-8 | 02-13 | — (not mentioned) | Tab labels must carry **per-tab error counts as text**, or validation errors on a hidden tab block Publish with no visible cause — contradicting `Screen-16`'s "errors are Primary / Publish always visible" hierarchy. | Medium |
+### Which document prevails
+
+**This contract does not authorise editing those plans.** Until a human adjudicates:
+
+- **The plans remain authoritative for execution.** An executor following the plans today is not in breach
+  of this contract.
+- **D-1, D-2/D-11 and D-9 are blocking and require a human decision *before planning consumes this
+  contract*.** Each describes a case where the plan and the contract cannot both be satisfied: D-1 names a
+  component that does not exist, D-2/D-11 would lock a 508 defect into a passing test, and D-9's required
+  copy **fails plan 02-15's own `<verify>` grep**.
+- The remaining entries are advisory and can be absorbed at execution time.
+
+| # | Plan / source | It says | This contract says | Severity |
+|---|---|---|---|---|
+| **D-1** | 02-13 (throughout) | Uses "USWDS `Tabs`" as though it were a shipped component | **No Tabs component exists** in USWDS 3.x or `@trussworks/react-uswds`. A justified custom `ConfigSectionTabs` is required, with the APG keyboard contract, tablist `aria-label`, and a manual SR pass. | **High — blocking** |
+| **D-2** | 02-13, test 7 (line 280) | *"assert the `Publish` button has the `disabled` attribute"* | Must assert **`aria-disabled="true"`**. As written the plan's own test would lock in a 508 defect. | **High — blocking** |
+| **D-11** | 02-13 — **six further sites** | `disabled` is specified for the Publish control at lines **32** (must_haves truth), **227** (task 2 instruction), **257** (task 2 `<done>`), **276** (test 3), **304** (task 3 `<done>`), and **323** (threat model T-02-64) | All six must change to `aria-disabled` alongside D-2. Recording only test 7 risks a partial fix that leaves the implementation instruction still saying `disabled`. **Lines 192, 213 and 275 are *not* in scope** — they concern the read-only denied surface, where the real `disabled` attribute is correct. | **High — blocking** |
+| **D-9** | 02-15, task 2 `<verify>` | Greps `not applied\|not searchable` in `UnsupportedFiltersNotice.tsx` | This contract's required copy ("cannot search by…", "were ignored", "is not available") contains **neither phrase**. Adopting the contract **fails the plan's verification command.** Either the copy or the grep must change. | **High — blocking** |
+| **D-3** | 02-15 | `SearchEmptyState({ queryText })`, with Playwright normalising the echo out | **No props at all.** Byte-identity becomes structural rather than test-normalised. | Medium |
+| **D-4** | 02-15 (lines 243–245) | *"**Some** filters… Results below reflect your other criteria."* | Rejected — opens with "Some" and asserts something false when zero results render. | Medium |
+| **D-6** | all three plans | — (not mentioned) | **`document.title` must be constant**, never containing count or query. An unaddressed existence-leak channel. | Medium |
+| **D-8** | 02-13 | — (not mentioned) | Tab labels must carry **per-tab error counts as text**, or validation errors on a hidden tab block Publish with no visible cause. | Medium |
+| **D-5** | 02-15 | Count rendered above the list as `{total_count} results` | Count line renders **only when `total_count > 0`**. | Low |
+| **D-7** | **`Screen-16` line 47** (*not* plan 02-13) | States table specifies *"Tag: 'Draft v4.3', **autosave indicator**"* | No autosave; explicit save with a save-state indicator. **Corrected attribution:** `grep -i autosave` over `02-13-PLAN.md` returns nothing — the plan already specifies only an explicit `Save Draft` button, so there is no plan conflict here, only a mockup one. | Low |
+| **D-10** | 02-14 (line 212) | Help text *"Delivery failed; this alert may have been escalated"* | This contract adopts **the plan's wording verbatim** rather than its own earlier variant. Conflict resolved in the plan's favour; no change required. | Low — resolved |
 
 ---
 
@@ -590,4 +859,5 @@ so a human can decide.
 ---
 
 *Phase: 02-platform-configuration-communication-services*
-*USWDS token values verified against USWDS `develop` source, 2026-10-06*
+*USWDS token values verified against USWDS `develop` source and trussworks `main`, 2026-10-06*
+*Revision 2 — addresses checker BLOCK on Dimensions 3 and 4, register corrections, and Dimension 2 FLAG*
