@@ -102,7 +102,8 @@ const RESPONSE_SCHEMAS = {
           required: ['scope_type'],
           properties: {
             scope_type: { type: 'string' },
-            scope_id: { type: 'string' },
+            scope_value: { type: 'string' },
+            scope_enum_value: { type: 'string' },
           },
         },
       },

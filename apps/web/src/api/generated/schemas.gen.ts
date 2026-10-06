@@ -58,7 +58,10 @@ export const EntitlementsDtoSchema = {
                     scope_type: {
                         type: 'string'
                     },
-                    scope_id: {
+                    scope_value: {
+                        type: 'string'
+                    },
+                    scope_enum_value: {
                         type: 'string'
                     }
                 }

@@ -53,7 +53,10 @@ export interface RoleAssignment {
 /** A scope attribute as the backend's entitlements payload reports it. */
 export interface ScopeAttribute {
   scope_type: string;
-  scope_id?: string;
+  /** UUID of the scoped object, when the scope type refers to a record. */
+  scope_value?: string;
+  /** Enum member, for `party_role` and `security_designation` scopes. */
+  scope_enum_value?: string;
 }
 
 /** The authenticated principal, assembled from the entitlements endpoint. */

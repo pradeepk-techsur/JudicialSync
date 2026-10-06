@@ -30,7 +30,8 @@ export type EntitlementsDto = {
     }>;
     scopes: Array<{
         scope_type: string;
-        scope_id?: string;
+        scope_value?: string;
+        scope_enum_value?: string;
     }>;
     /**
      * Separately granted entitlements; a role never contributes here.
