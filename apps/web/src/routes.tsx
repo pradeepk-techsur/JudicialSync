@@ -5,6 +5,7 @@ import { useAuth } from './auth/AuthProvider';
 import { CallbackPage } from './auth/CallbackPage';
 import { LoginPage } from './auth/LoginPage';
 import { RequireSession } from './auth/RequireSession';
+import { AuditExplorerPage } from './pages/AuditExplorerPage';
 import { CaseListPage } from './pages/CaseListPage';
 import { AppShell } from './shell/AppShell';
 import { visibleNavItems } from './shell/SideNav';
@@ -64,7 +65,7 @@ export function AppRoutes(): JSX.Element {
         element={
           <RequireSession>
             <AppShell>
-              <AuditPlaceholder />
+              <AuditExplorerPage />
             </AppShell>
           </RequireSession>
         }
@@ -91,17 +92,5 @@ function HomeRedirect(): JSX.Element {
       Your account is active but has not been granted access to any modules. This is expected
       for a new, least-privilege account. Contact your court administrator to request access.
     </Alert>
-  );
-}
-
-/** Placeholder for the Audit Explorer screen — mounted for real in Task 2. */
-function AuditPlaceholder(): JSX.Element {
-  return (
-    <section data-testid="audit-screen">
-      <h1>Audit Explorer</h1>
-      <Alert type="info" headingLevel="h2" heading="Audit Explorer">
-        The Audit Explorer is mounted here in plan 01-15.
-      </Alert>
-    </section>
   );
 }
