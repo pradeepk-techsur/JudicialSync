@@ -1463,3 +1463,52 @@ Time:        8.429 s
 Ran all test suites.
 ```
 
+
+## Backend pre-push gate
+
+- Status: passed_with_warnings
+- Wave-gate coverage: INCOMPLETE — wave(s) 5 ran with no GATE.md entry
+- Result marker + failing output tail:
+```
+__GATE__ build_exit=0 test_exit=0 build_cmd=[npm run build] test_cmd=[npm test] head=b8b16f58888566ee308578563fcce3c69cea2406 test_files=48 skip_marks=0 shadow_files=0
+  ● Console
+
+    console.warn
+      SKIPPING: the Compose stack is not reachable at https://judicialsync.localhost:8443/auth/realms/judicialsync. Run `docker compose up -d` to exercise these tests.
+
+    [0m [90m 219 |[39m   [36mif[39m ([36mawait[39m stackAvailable()) [36mreturn[39m [36mtrue[39m[33m;[39m
+     [90m 220 |[39m   [90m// eslint-disable-next-line no-console[39m
+    [31m[1m>[22m[39m[90m 221 |[39m   console[33m.[39mwarn(
+     [90m     |[39m           [31m[1m^[22m[39m
+     [90m 222 |[39m     [32m`SKIPPING: the Compose stack is not reachable at ${ISSUER}. `[39m [33m+[39m
+     [90m 223 |[39m       [32m`Run \`docker compose up -d\` to exercise these tests.`[39m[33m,[39m
+     [90m 224 |[39m   )[33m;[39m[0m
+
+      at requireStack (test/auth-harness.ts:221:11)
+      at Object.<anonymous> (test/config-read-path.e2e-spec.ts:81:17)
+
+PASS test/case-no-delete.e2e-spec.ts
+  ● Console
+
+    console.warn
+      SKIPPING: the Compose stack is not reachable at https://judicialsync.localhost:8443/auth/realms/judicialsync. Run `docker compose up -d` to exercise these tests.
+
+    [0m [90m 219 |[39m   [36mif[39m ([36mawait[39m stackAvailable()) [36mreturn[39m [36mtrue[39m[33m;[39m
+     [90m 220 |[39m   [90m// eslint-disable-next-line no-console[39m
+    [31m[1m>[22m[39m[90m 221 |[39m   console[33m.[39mwarn(
+     [90m     |[39m           [31m[1m^[22m[39m
+     [90m 222 |[39m     [32m`SKIPPING: the Compose stack is not reachable at ${ISSUER}. `[39m [33m+[39m
+     [90m 223 |[39m       [32m`Run \`docker compose up -d\` to exercise these tests.`[39m[33m,[39m
+     [90m 224 |[39m   )[33m;[39m[0m
+
+      at requireStack (test/auth-harness.ts:221:11)
+      at Object.<anonymous> (test/case-no-delete.e2e-spec.ts:56:17)
+
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure that .unref() was called on them.
+
+Test Suites: 14 passed, 14 total
+Tests:       210 passed, 210 total
+Snapshots:   0 total
+Time:        8.182 s
+Ran all test suites.
+```
