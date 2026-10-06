@@ -1,0 +1,90 @@
+# =============================================================================
+# JudicialSync — negative-path assurance gate (plan 01-14)
+# =============================================================================
+#
+# OWNERSHIP: this file belongs to plan 01-14. It is a SIBLING of ci.yml
+# (plan 01-01, owner), policy.yml (01-02) and e2e.yml (01-13) — never a job
+# appended to any of them. Phase 1 plans run partly in parallel, so a shared
+# workflow file would be a guaranteed merge conflict; each gate therefore
+# arrives as its own workflow (see ci.yml's ownership table).
+#
+# WHY A DEDICATED WORKFLOW. CONTEXT makes the negative-path suite a named
+# Phase 1 deliverable whose result is the phase's EVIDENCE: "These tests are the
+# evidence for success criteria 1, 3, 4, and 5." A separately-visible GitHub
+# check is what makes that evidence usable — a reviewer asking "is the
+# foundation sound?" looks for THIS check being green, not for a line buried in
+# the general test log. The suite also runs against the FULL live stack (real
+# Keycloak + TOTP, real OPA, real ClamAV, real MinIO, the real database as
+# app_rw/app_dba), which is heavier than the ci.yml test job and must not slow
+# the fast gate.
+#
+# The suite bypasses the UI and the in-process Nest module by design: it issues
+# raw HTTP against the running `api` container through the TLS proxy, exactly as
+# an attacker would. See apps/api/test/assurance/harness.ts.
+# =============================================================================
+
+name: Assurance
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: assurance-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  assurance:
+    name: Negative-path assurance suite (criteria 1, 3, 4, 5)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # devDependencies INCLUDED — ts-jest, the Prisma CLI and the TypeScript
+      # toolchain all live there. Never add --omit=dev here (see ci.yml).
+      - name: Install dependencies
+        run: npm ci
+
+      # The compose file IS the infrastructure spec: it brings up db (with a
+      # healthcheck), redis, opa, keycloak, clamav, minio and the proxy, and the
+      # api service's own entrypoint runs migrate -> idempotent seed -> serve.
+      # `--build` ensures the image reflects the current source.
+      - name: Bring up the stack
+        env:
+          OIDC_CLIENT_SECRET: judicialsync-local-dev-client-secret
+          KEYCLOAK_ADMIN_PASSWORD: admin
+          S3_ACCESS_KEY_ID: judicialsync_local_minio
+          S3_SECRET_ACCESS_KEY: judicialsync_local_minio_secret
+        run: docker compose up -d --build
+
+      # Wait for the API health route AND for ClamAV to report healthy (the
+      # upload-rejection cases need a live scanner). A generous ceiling: ClamAV's
+      # freshclam database load and Keycloak's realm import are both slow.
+      - name: Wait for the stack to be healthy
+        run: |
+          timeout 900 bash -c '
+            until curl -ksSf https://judicialsync.localhost:8443/api/v1/health >/dev/null \
+                  && docker compose ps clamav | grep -q healthy; do
+              sleep 15
+            done'
+
+      # The standalone assurance suite — the whole point of this gate. A failure
+      # fails the build, and because this is its own workflow the failed check
+      # names the guarantee that broke.
+      - name: Run the assurance suite
+        run: npm run test:assurance -w apps/api
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
