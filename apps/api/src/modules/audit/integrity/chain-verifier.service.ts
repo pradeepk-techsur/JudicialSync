@@ -44,6 +44,13 @@ interface VerifierRow {
   row_hash: string;
 }
 
+/** Deterministic `(occurred_at, id)` ordering for orphan reporting. */
+function compareByOccurredThenId(a: VerifierRow, b: VerifierRow): number {
+  const byTime = a.occurred_at.getTime() - b.occurred_at.getTime();
+  if (byTime !== 0) return byTime;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 /**
  * ============================================================================
  * THE INDEPENDENT HASH-CHAIN RE-WALK
@@ -134,63 +141,114 @@ export class ChainVerifierService {
       ? AUDIT_GENESIS_HASH
       : await this.seedPrevHash(opts.fromOccurredAt as Date);
 
+    // ------------------------------------------------------------------------
+    // Traverse by LINKAGE, not by a timestamp re-sort.
+    //
+    // The chain is built at INSERT time by serialising writers on a FOR UPDATE
+    // lock of the single `audit_chain_head` row (`audit.service.ts`). The true
+    // predecessor of any row is therefore the row that held that lock
+    // immediately before it — the linkage order that `prev_hash` encodes
+    // directly — NOT `(occurred_at, id)` order. `occurred_at` is captured in JS
+    // before the lock is acquired, so two concurrent writers can capture
+    // timestamps in one order and link into the chain in the opposite order.
+    // Re-sorting the walk by `(occurred_at, id)` would then compare each row's
+    // `prev_hash` against the WRONG predecessor and raise a false
+    // `prev_hash_mismatch` on a genuinely-intact chain (the single most
+    // important integrity signal crying wolf under ordinary concurrency).
+    //
+    // So we follow the linkage: starting from `expectedPrev`, the next row in
+    // the chain is the one whose stored `prev_hash` equals it. We still fetch in
+    // `(occurred_at, id)` batches (to stay memory-bounded over an append-only
+    // table that grows without end), but we index each batch by `prev_hash` and
+    // consume rows in LINKAGE order. Because the timestamp/linkage divergence is
+    // bounded to concurrent commits (milliseconds apart), a linked successor is
+    // always within a batch or two of its predecessor in `occurred_at` order, so
+    // this remains a streaming walk with bounded working-set memory.
+    // ------------------------------------------------------------------------
+
+    // Rows fetched but not yet consumed by the linkage walk, indexed by their
+    // stored `prev_hash`. A correctly-linked chain has at most one row per
+    // `prev_hash`; a genuine fork tamper would produce two, handled below.
+    const pending = new Map<string, VerifierRow>();
     let lastRowHash: string | null = null;
     let cursor: { occurred_at: Date; id: string } | null = null;
+    let exhausted = false;
+
+    // The genesis `prev_hash` for the first linked row. On a full walk this is
+    // AUDIT_GENESIS_HASH; on an incremental walk it is the seed computed above.
+    const chainStart = expectedPrev;
 
     for (;;) {
+      // Advance the linkage walk as far as the currently-loaded rows allow.
+      for (;;) {
+        const row = pending.get(expectedPrev);
+        if (row === undefined) break; // next link not loaded yet — fetch more.
+        pending.delete(expectedPrev);
+
+        rowsChecked++;
+        this.checkRow(row, expectedPrev, breaks);
+
+        // The next row's prev_hash should equal THIS row's stored row_hash.
+        // Using the stored value (not the recomputed one) means a single
+        // row_hash edit surfaces as one row_hash_mismatch here and one
+        // orphaned-successor break — the pair that shows a tamper in the middle
+        // breaks the chain in both directions, the honest picture.
+        expectedPrev = row.row_hash;
+        lastRowHash = row.row_hash;
+      }
+
+      if (exhausted) break;
+
       const rows = await this.fetchBatch(cursor, opts.fromOccurredAt ?? null);
-      if (rows.length === 0) break;
+      if (rows.length === 0) {
+        exhausted = true;
+        continue;
+      }
 
       for (const row of rows) {
-        rowsChecked++;
-
-        // 1. row_hash: does the content still hash to the stored value?
-        const recomputed = computeRowHash(
-          this.toInput(row),
-          row.occurred_at,
-          row.prev_hash,
-        );
-        if (recomputed !== row.row_hash) {
-          breaks.push({
-            audit_event_id: row.id,
-            kind: 'row_hash_mismatch',
-            expected_hash: recomputed,
-            actual_hash: row.row_hash,
-          });
-        }
-
-        // 2. prev_hash: does the linkage to the preceding row hold?
-        //    `expectedPrev` is null only on the first incremental batch when the
-        //    window starts at genesis (no preceding row) — handled by seeding
-        //    it to genesis there, so it is never null here.
-        if (row.prev_hash !== expectedPrev) {
+        const existing = pending.get(row.prev_hash);
+        if (existing !== undefined) {
+          // Two rows claim the same predecessor — a forked chain, which is a
+          // genuine tamper. Keep the first in the walk; flag the duplicate as a
+          // prev_hash break so it is not silently dropped.
+          rowsChecked++;
           breaks.push({
             audit_event_id: row.id,
             kind: 'prev_hash_mismatch',
-            expected_hash: expectedPrev,
+            expected_hash: existing.row_hash,
             actual_hash: row.prev_hash,
           });
+          continue;
         }
-
-        // The NEXT row's prev_hash should equal THIS row's stored row_hash.
-        // Using the stored value (not the recomputed one) means a single
-        // row_hash edit surfaces as one row_hash_mismatch here and one
-        // prev_hash_mismatch on the following row — the pair that shows a tamper
-        // in the middle breaks the chain in both directions, which is the honest
-        // picture rather than a single ambiguous flag.
-        expectedPrev = row.row_hash;
-        lastRowHash = row.row_hash;
+        pending.set(row.prev_hash, row);
       }
 
       const last = rows[rows.length - 1];
       cursor = { occurred_at: last.occurred_at, id: last.id };
 
       // A short batch is the last batch.
-      if (rows.length < BATCH_SIZE) break;
+      if (rows.length < BATCH_SIZE) exhausted = true;
     }
 
+    // Any rows still pending after the main walk never linked onto the chain
+    // from `chainStart`: the walk stalled at some `expectedPrev` that no loaded
+    // row claimed as its `prev_hash`. That stall is a genuine break — a cut
+    // `prev_hash`, a deleted middle row, an orphan from a tamper elsewhere.
+    //
+    // These pending rows still form one or more internally-linked SEGMENTS: a
+    // single mid-chain tamper leaves the tail after it perfectly linked to
+    // itself, just detached from the walked prefix. We localise the break to the
+    // SEGMENT HEADS (the rows whose predecessor is not itself pending) rather
+    // than flagging the entire detached tail — mirroring the honest "break the
+    // chain at the tampered point, not for every row after it" semantics. Within
+    // a segment the linkage holds, so those rows only get a `row_hash` content
+    // check, not a spurious `prev_hash` break.
+    this.reportDetachedSegments(pending, chainStart, breaks, () => {
+      rowsChecked++;
+    });
+
     // 3. chain_head: on a full walk, the recorded head must match the final
-    //    row's hash. This is the tail-deletion detector.
+    //    row's hash (in LINKAGE order). This is the tail-deletion detector.
     if (full) {
       const headBreak = await this.checkChainHead(lastRowHash);
       if (headBreak !== null) breaks.push(headBreak);
@@ -207,6 +265,135 @@ export class ChainVerifierService {
     }
 
     return result;
+  }
+
+  // =========================================================================
+  // Per-row checks
+  // =========================================================================
+
+  /**
+   * Both per-row checks for a row reached in linkage order.
+   *
+   *  1. `row_hash` — does the content still hash to the stored value? (This is
+   *     independent of walk order: it recomputes from the row's OWN stored
+   *     `prev_hash` and content.)
+   *  2. `prev_hash` — does the row link to its true predecessor? `expectedPrev`
+   *     is the `row_hash` of the preceding row in LINKAGE order (genesis for the
+   *     first). Because the walk only reaches this row via `pending.get(
+   *     expectedPrev)`, `row.prev_hash === expectedPrev` holds by construction
+   *     for a reached row — but we assert it explicitly so a future change to the
+   *     traversal cannot silently drop the linkage check.
+   */
+  private checkRow(
+    row: VerifierRow,
+    expectedPrev: string,
+    breaks: ChainBreak[],
+  ): void {
+    this.checkRowHashOnly(row, breaks);
+
+    if (row.prev_hash !== expectedPrev) {
+      breaks.push({
+        audit_event_id: row.id,
+        kind: 'prev_hash_mismatch',
+        expected_hash: expectedPrev,
+        actual_hash: row.prev_hash,
+      });
+    }
+  }
+
+  /** The order-independent `row_hash` content check, used for reached rows and orphans alike. */
+  private checkRowHashOnly(row: VerifierRow, breaks: ChainBreak[]): void {
+    const recomputed = computeRowHash(
+      this.toInput(row),
+      row.occurred_at,
+      row.prev_hash,
+    );
+    if (recomputed !== row.row_hash) {
+      breaks.push({
+        audit_event_id: row.id,
+        kind: 'row_hash_mismatch',
+        expected_hash: recomputed,
+        actual_hash: row.row_hash,
+      });
+    }
+  }
+
+  /**
+   * Report the breaks for rows that never linked onto the walked chain.
+   *
+   * The `pending` rows form one or more segments, each internally linked by
+   * `prev_hash → row_hash`. A SEGMENT HEAD is a pending row whose predecessor
+   * (`prev_hash`) is not the `row_hash` of any other pending row — i.e. the row
+   * where the detached segment begins. Each head is a real `prev_hash_mismatch`
+   * (its link into the chain is cut); the rest of each segment is walked by
+   * linkage and only `row_hash`-checked, so a single mid-chain tamper produces
+   * ONE linkage break, not one per row after it.
+   *
+   * @param onRow called once per pending row visited, so the caller can keep its
+   *   `rows_checked` tally accurate.
+   */
+  private reportDetachedSegments(
+    pending: Map<string, VerifierRow>,
+    chainStart: string,
+    breaks: ChainBreak[],
+    onRow: () => void,
+  ): void {
+    // Index the pending rows by `row_hash` so we can tell whether a row's
+    // predecessor is itself pending (same segment) or absent (segment head).
+    const byRowHash = new Map<string, VerifierRow>();
+    for (const row of pending.values()) {
+      byRowHash.set(row.row_hash, row);
+    }
+
+    // Segment heads: predecessor not present among the pending rows. Emit in a
+    // deterministic `(occurred_at, id)` order so repeated runs agree.
+    const heads = [...pending.values()]
+      .filter((row) => !byRowHash.has(row.prev_hash))
+      .sort(compareByOccurredThenId);
+
+    for (const head of heads) {
+      // Walk this detached segment by linkage from its head. The successor of a
+      // row is the pending row whose `prev_hash` equals this row's `row_hash` —
+      // which is exactly `pending.get(row.row_hash)`, since `pending` is keyed by
+      // `prev_hash`.
+      let current: VerifierRow | undefined = head;
+      let first = true;
+      while (current !== undefined) {
+        onRow();
+        // Every row in a detached segment still gets a content check.
+        this.checkRowHashOnly(current, breaks);
+
+        if (first) {
+          // Only the head's link into the walked chain is cut; the rest of the
+          // segment links to itself, so just the head gets a prev_hash break.
+          breaks.push({
+            audit_event_id: current.id,
+            kind: 'prev_hash_mismatch',
+            expected_hash: chainStart,
+            actual_hash: current.prev_hash,
+          });
+          first = false;
+        }
+
+        const rowHash = current.row_hash;
+        pending.delete(current.prev_hash);
+        current = pending.get(rowHash);
+      }
+    }
+
+    // Any rows left in `pending` now belong to a cycle (no segment head) — a
+    // pathological tamper. Flag each as a linkage break so none is dropped.
+    for (const row of [...pending.values()].sort(compareByOccurredThenId)) {
+      onRow();
+      this.checkRowHashOnly(row, breaks);
+      breaks.push({
+        audit_event_id: row.id,
+        kind: 'prev_hash_mismatch',
+        expected_hash: chainStart,
+        actual_hash: row.prev_hash,
+      });
+      pending.delete(row.prev_hash);
+    }
   }
 
   // =========================================================================
