@@ -3,15 +3,15 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-13-PLAN.md (thin USWDS shell, code-first OpenAPI client, release-blocking axe gate)
-last_updated: "2026-10-06T05:17:19.627Z"
-last_activity: "2026-10-06 — Wave 7: 01-13 landed (thin USWDS shell with real OIDC+TOTP browser login, code-first OpenAPI 3.1 contract + generated typed client, one generic entitlement-driven shell behind the Caddy TLS origin, and a release-blocking axe-core gate — 14 Playwright E2E+axe cases green against the live stack)"
+stopped_at: Completed 01-15-PLAN.md
+last_updated: "2026-10-06T07:30:52.151Z"
+last_activity: "2026-10-06 — Wave 8: 01-15 landed (Phase-1 UI surfaces: entitlement-differentiated Case List + read-only Audit Explorer per Screen-17, live chain-integrity badge, 14 new Playwright cases and a populated-state release-blocking axe gate — all 15 Phase-1 plans complete)"
 progress:
   total_phases: 8
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 15
-  completed_plans: 14
-  percent: 53
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 ## Current Position
 
 Phase: 1 of 8 (Core Identity, Case Model, Audit & Security Baseline)
-Plan: wave 7 executing (01-13 and 01-14 landed; 14 of 15 Phase-1 plans have SUMMARYs — only 01-15 remains)
-Status: Executing
-Last activity: 2026-10-06 — Wave 7: 01-13 landed (thin USWDS shell with real OIDC+TOTP browser login, code-first OpenAPI 3.1 contract + generated typed client, one generic entitlement-driven shell behind the Caddy TLS origin, and a release-blocking axe-core gate — 14 Playwright E2E+axe cases green against the live stack)
+Plan: all 15 Phase-1 plans complete (01-15 landed — the last plan). Phase 1 done; ready for transition.
+Status: Phase complete
+Last activity: 2026-10-06 — Wave 8: 01-15 landed (Phase-1 UI surfaces — entitlement-differentiated Case List + read-only Audit Explorer per Screen-17 with a live chain-integrity badge; 14 new Playwright cases and a populated-state release-blocking axe gate, 32 E2E + 9 axe green against the live stack)
 
-Progress: [█████░░░░░] 53%
+Progress: Phase 1 [██████████] 100% (15/15 plans)
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Progress: [█████░░░░░] 53%
 | Phase 01 P08 | 4h 20m | 3 tasks | 12 files |
 | Phase 01-core-identity-case-model-audit-security-baseline P14 | 110 min | 3 tasks | 10 files |
 | Phase 01-core-identity-case-model-audit-security-baseline P13 | 3h 55m | 3 tasks | 40 files |
+| Phase 01-core-identity-case-model-audit-security-baseline P15 | 3h 20m | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -148,6 +149,7 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-14: chain-break assertions are scoped to the test's own corrupted audit_event_id and restore the head in a finally, never asserting the global chain_verified flag — the shared dev DB carries genuine prev_hash breaks from other suites' teardown (DEF-03), so a global assertion would fail for the wrong reason
 - [Phase 01]: 01-14: criterion 5 is recorded PARTIAL (ASM-07) — object-store AES256 is proven via HeadObject but database at-rest encryption is deferred to the deployment substrate; marking it complete would be the single most misleading line in the phase's output. docs/ASSURANCE.md's traceability is enforced by a meta-test that fails if the matrix names any spec file or test title that does not exist
 - [Phase 01]: 01-14: DEF-01 CONFIRMED by test — the seeded judge cannot read the sealed case (its only case scope is the plain case, and 01-02 narrowing confines it there), so criterion 4's positive control grants the sealed-case scope in-test as app_dba; the one-row seed fix (judge → sealed-case scope) is recommended to a later plan, and the narrowing must NOT be removed
+- [Phase 01-core-identity-case-model-audit-security-baseline]: 01-15: Phase-1 UI surfaces shipped — CaseListPage (entitlement-differentiated, sealed cases omitted entirely and never counted) and the read-only Audit Explorer (Screen-17) with a live chain-integrity badge; access-denied states derive from the server's error_code not a client guess; AppShell now always renders children (no-modules message moved to the index route)
 
 ### Pending Todos
 
@@ -168,6 +170,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-06T05:17:19.625Z
-Stopped at: Completed 01-13-PLAN.md (thin USWDS shell, code-first OpenAPI client, release-blocking axe gate)
+Last session: 2026-10-06T07:30:46.875Z
+Stopped at: Completed 01-15-PLAN.md
 Resume file: None
