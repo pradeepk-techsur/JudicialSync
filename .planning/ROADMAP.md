@@ -65,7 +65,25 @@ Plans:
   2. A recipient receives a notification whose body/preview never contains party names, exhibit descriptions, or sealed-case detail — only a generic description plus a secure deep link — with delivery status (sent/failed/acknowledged) tracked.
   3. A notification that fails delivery is retried per the configured backoff policy and, if still unacknowledged past the court-configured escalation cadence, auto-escalates to a secondary recipient — an alert is never silently dropped on persistent failure.
   4. A user searching by identifier/party/witness/status/date/proceeding receives zero hits for a record outside their access scope (not a redacted placeholder result) — confirmed by an unauthorized user's search against a sealed record returning nothing.
-**Plans**: TBD
+**Plans**: 16 plans across 10 waves
+
+Plans:
+- [ ] 02-01-PLAN.md — Phase 2 platform schema: config package types, audit provenance + versioned hash field list, notifications/exceptions, access-tagged search index (wave 1)
+- [ ] 02-02-PLAN.md — Shared `@judicialsync/config-schema` zod package and the Phase 2 dependency surface (wave 1)
+- [ ] 02-03-PLAN.md — Mailpit, channel registry, closed-context templates, content policy structural + tripwire + CI check (wave 2)
+- [ ] 02-04-PLAN.md — Versioned canonical audit payload, rule_package_version_id stamping, mixed-version chain continuity (wave 2)
+- [ ] 02-05-PLAN.md — Search index projections, object-type registry, outbox-driven maintenance, fail-closed designation tags (wave 2)
+- [ ] 02-06-PLAN.md — ConfigResolver as the single read path, v1 package migration/seed, Phase 1 config demotion (wave 3)
+- [ ] 02-07-PLAN.md — OPA partial evaluation, residual-to-SQL translator with its own suite, Redis residual cache and invalidation (wave 3)
+- [ ] 02-08-PLAN.md — Rule package draft/validate/publish with session-derived approver and server-side SoD (wave 4)
+- [ ] 02-09-PLAN.md — Search API: SearchProvider, pre-filter before ranking, unsupported_filters, operational query log (wave 4)
+- [ ] 02-10-PLAN.md — Notifications core: trigger, recipient resolution, delivery, inbox, acknowledge, audit boundary (wave 4)
+- [ ] 02-11-PLAN.md — Retry/backoff, escalation sweeper over durable state, narrow exceptions write path (wave 5)
+- [ ] 02-12-PLAN.md — OpenAPI contract corrections, deviation and assumption registers, regenerated TS client (wave 6)
+- [ ] 02-13-PLAN.md — Configuration Engine screen (Screen-16) with structurally-blocked Publish (wave 7)
+- [ ] 02-14-PLAN.md — Notification inbox, polling transport abstraction, deep-link landing route (wave 8)
+- [ ] 02-15-PLAN.md — Header search input and results page with exclusion-blind empty state (wave 9)
+- [ ] 02-16-PLAN.md — Named Phase 2 assurance suite: seven proofs plus machine-checked traceability (wave 10)
 
 ### Phase 3: Workflow Aggregation & CM/ECF Sync
 **Goal**: Give staff one place to see what needs their attention across both modules, one merged chronological view per case, de-identified operational visibility for administrators, and a trustworthy inbound sync from CM/ECF — so nothing is worked from a cold search, nothing is silently overwritten from the docket, and data-quality risk surfaces before it causes downstream errors.
@@ -141,7 +159,7 @@ Phases execute in numeric order for bookkeeping: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Core Identity, Case Model, Audit & Security Baseline | 0/15 | In progress | - |
-| 2. Platform Configuration & Communication Services | 0/TBD | Not started | - |
+| 2. Platform Configuration & Communication Services | 0/16 | Planned | - |
 | 3. Workflow Aggregation & CM/ECF Sync | 0/TBD | Not started | - |
 | 4. Role-Specific UI Workspaces & External Attorney Portal | 0/TBD | Not started | - |
 | 5. Evidentiary Tracking Core | 0/TBD | Not started | - |
