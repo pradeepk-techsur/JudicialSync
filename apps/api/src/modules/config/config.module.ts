@@ -1,4 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
+
+import { PrismaModule } from '../../common/prisma/prisma.module';
+import { ConfigController } from './config.controller';
+import { CourtConfigService } from './court-config.service';
 
 /**
  * **Configuration read path** — the Phase 1 subset of the Configuration
@@ -23,6 +27,23 @@ import { Module } from '@nestjs/common';
  * NOTE: this is JudicialSync's own configuration domain, distinct from
  * `@nestjs/config`'s `ConfigModule`, which reads process environment. Import
  * order in `app.module.ts` disambiguates the two by aliasing.
+ *
+ * ## Why `@Global()` and `exports: [CourtConfigService]`
+ *
+ * {@link CourtConfigService} is the single configuration read path every other
+ * Phase 1 module is meant to use (plans 01-06, 01-07 and 01-10 each currently
+ * read `rule_package_versions` directly as a stopgap; the SUMMARY records that
+ * those should switch to this service). Exporting it and marking the module
+ * `@Global()` makes it injectable everywhere without any consumer importing
+ * this module explicitly — the same mechanism `IdentityModule` and
+ * `PolicyModule` use so that `app.module.ts` (owned by plan 01-01) need not
+ * change to wire a new dependency in.
  */
-@Module({})
+@Global()
+@Module({
+  imports: [PrismaModule],
+  controllers: [ConfigController],
+  providers: [CourtConfigService],
+  exports: [CourtConfigService],
+})
 export class AppConfigModule {}
