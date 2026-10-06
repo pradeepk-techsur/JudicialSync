@@ -398,17 +398,24 @@ async function browserAuthorize(
     res = await submitOtp(await freshTotp(username, totp));
 
     // A 200 means the OTP form re-rendered — the code was rejected, almost
-    // always because this window's code was already spent. Wait out the window
-    // and present a genuinely fresh one. Bounded to one retry so a real auth
-    // failure still surfaces rather than looping.
-    if (res.status === 200) {
+    // always because this window's code was already spent (Keycloak enforces
+    // TOTP one-time-use, and the whole assurance suite shares one IdP). Wait out
+    // the window and present a genuinely fresh one.
+    //
+    // Bounded to a few retries across distinct windows rather than one: when
+    // every criterion spec drives real logins back to back, two logins for the
+    // same user can land in the same 30s window and BOTH spend its code, so a
+    // single retry is not always enough. The bound still lets a GENUINE auth
+    // failure (wrong password, a broken realm) surface as a failure rather than
+    // looping forever — it just no longer mistakes IdP contention for one.
+    const MAX_OTP_RETRIES = 4;
+    for (let attempt = 0; res.status === 200 && attempt < MAX_OTP_RETRIES; attempt += 1) {
       const retryBody = await res.text();
       const retryAction = extractFormAction(retryBody);
-      if (retryAction !== undefined) {
-        action = retryAction;
-        await waitForNextWindow();
-        res = await submitOtp(await freshTotp(username, totp));
-      }
+      if (retryAction === undefined) break; // not the OTP form — a real failure
+      action = retryAction;
+      await waitForNextWindow();
+      res = await submitOtp(await freshTotp(username, totp));
     }
   }
 
@@ -444,7 +451,19 @@ export interface LoggedIn {
   };
 }
 
-/** Run the full login and return the session payload (uncached). */
+const tokenCache: Map<SeededRole, string> = ((
+  globalThis as { __assuranceTokens?: Map<SeededRole, string> }
+).__assuranceTokens ??= new Map<SeededRole, string>());
+
+/**
+ * Run the full login and return the session payload.
+ *
+ * Also seeds the token cache for this user: a fresh login is expensive (a real
+ * TOTP window), so an immediately-following `tokenFor(sameUser)` should reuse
+ * this session rather than mint a second one in the same 30s window — which
+ * would collide on Keycloak's TOTP one-time-use. Callers that specifically need
+ * a NEW session after invalidating the old one call `forgetToken(user)` first.
+ */
 export async function loginFresh(username: SeededRole): Promise<LoggedIn> {
   const { code, state, callbackParams } = await browserAuthorize(username);
   const login = await api.post<LoggedIn>('/auth/login', {
@@ -455,12 +474,9 @@ export async function loginFresh(username: SeededRole): Promise<LoggedIn> {
       `POST /auth/login for ${username} failed: ${login.status} ${login.rawBody}`,
     );
   }
+  tokenCache.set(username, login.body.session_token);
   return login.body;
 }
-
-const tokenCache: Map<SeededRole, string> = ((
-  globalThis as { __assuranceTokens?: Map<SeededRole, string> }
-).__assuranceTokens ??= new Map<SeededRole, string>());
 
 /**
  * A REAL session token for a seeded role, cached per run.
