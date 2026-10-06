@@ -95,7 +95,27 @@ Plans:
   3. A user viewing a case's timeline sees docket events and hearings merged into one filterable chronological view with deep links into each underlying record.
   4. A court administrator views a role-limited, de-identified operational dashboard (backlog age, configuration consistency, adoption) that contains no path back to an individual judicial determination.
   5. Inbound CM/ECF case/party/docket-event/order data appears with source identifiers preserved, and when an incoming field conflicts with an existing local value, the conflict routes to a human-review queue instead of silently overwriting either value — confirmed by deliberately creating a conflicting field and observing it land in the conflict queue, not get silently applied.
-**Plans**: TBD
+**Plans**: 18 plans across 9 waves
+
+Plans:
+- [ ] 03-01-PLAN.md — Phase 3 schema: queues, 1:1 task link, critical auto-close trigger, CM/ECF tables, field-level provenance, reporting role + aggregate-only functions (wave 1)
+- [ ] 03-02-PLAN.md — OPA policy surface: Phase 3 entitlements, entitlement-not-role routing, unconditional outbound deny (wave 1)
+- [ ] 03-03-PLAN.md — Shared rationale validator with hard floor, plus queue/reporting/CM-ECF policy schemas in @judicialsync/config-schema (wave 1)
+- [ ] 03-04-PLAN.md — Fixture-driven mock CM/ECF container over real HTTP, drivable to conflict/duplicate/malformed/outage (wave 1)
+- [ ] 03-05-PLAN.md — TaskService: entitlement-based ownership, no-eligible-owner loop guard, service-only completion, rationale-gated dismissal (wave 2)
+- [ ] 03-06-PLAN.md — Case Timeline provider registry with two opposite absence semantics (silent exclusion, loud 206) (wave 2)
+- [ ] 03-07-PLAN.md — Field-level locally_modified_fields in the case-context write path, conflict detection and resolution semantics (wave 2)
+- [ ] 03-08-PLAN.md — Reporting feed over the restricted database role, small-cell suppression, label in export bytes (wave 2)
+- [ ] 03-09-PLAN.md — Exception queue triage, rationale gate, resolution-action registry, raise() creates the linked task, idempotent backfill (wave 3)
+- [ ] 03-10-PLAN.md — CM/ECF adapter: CmecfSyncProvider, poller, idempotent delivery log, wake-up/status/outbound refusal, health alert (wave 3)
+- [ ] 03-11-PLAN.md — Aging and escalation sweeper over both queues, plus the open-task reconciliation sweeper (wave 4)
+- [ ] 03-12-PLAN.md — Retention disposition sweep, the three task-only producers, docket_outbound made ungrantable (wave 4)
+- [ ] 03-13-PLAN.md — Seed extension: Phase 3 config keys, entitlement grants, conflict/aging/small-cell fixtures (wave 4)
+- [ ] 03-14-PLAN.md — OpenAPI corrections, eight deviation registrations, three assumptions, error-code catalog, client regen (wave 5)
+- [ ] 03-15-PLAN.md — Work Queue and Exception Queue (Screen-13) screens plus the Phase 3 nav aggregator (wave 6)
+- [ ] 03-16-PLAN.md — Case Timeline and CM/ECF Adapter Health (Screen-18) screens (wave 7)
+- [ ] 03-17-PLAN.md — Reporting Dashboard screen and the blocking axe gate across all five Phase 3 screens (wave 8)
+- [ ] 03-18-PLAN.md — Named Phase 3 assurance suite: eleven proofs plus machine-checked traceability (wave 9)
 
 ### Phase 4: Role-Specific UI Workspaces & External Attorney Portal
 **Goal**: Give every primary user type a purpose-built, USWDS-based, Section 508-accessible workspace, and let external attorneys contribute structured input — so each role works efficiently in its own interface, and external attorneys can submit/view only what they're authorized to, never touching the official record.
@@ -160,7 +180,7 @@ Phases execute in numeric order for bookkeeping: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Core Identity, Case Model, Audit & Security Baseline | 0/15 | In progress | - |
 | 2. Platform Configuration & Communication Services | 0/16 | Planned | - |
-| 3. Workflow Aggregation & CM/ECF Sync | 0/TBD | Not started | - |
+| 3. Workflow Aggregation & CM/ECF Sync | 0/18 | Planned | - |
 | 4. Role-Specific UI Workspaces & External Attorney Portal | 0/TBD | Not started | - |
 | 5. Evidentiary Tracking Core | 0/TBD | Not started | - |
 | 6. Evidentiary Tracking Reconciliation & Closeout | 0/TBD | Not started | - |
