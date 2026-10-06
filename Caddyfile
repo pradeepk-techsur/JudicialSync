@@ -71,9 +71,12 @@ judicialsync.localhost:8443 {
 		reverse_proxy api:3000
 	}
 
-	# --- Everything else ---------------------------------------------------
-	# Plan 01-13 replaces this block with: reverse_proxy web:5173
+	# --- The web shell -----------------------------------------------------
+	# Everything not under /auth or /api is the UI. Serving it from the same TLS
+	# origin as the API and the IdP is what makes the OIDC redirect work without
+	# CORS or cookie-domain problems, and it means the browser only ever sees
+	# same-origin relative paths.
 	handle {
-		respond "JudicialSync Platform Core. UI ships in plan 01-13. API: /api/v1/health" 200
+		reverse_proxy web:5173
 	}
 }

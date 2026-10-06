@@ -1,0 +1,25 @@
+// =============================================================================
+// USWDS theme + source import.
+// =============================================================================
+//
+// This partial exists for a mundane but real reason: the entry stylesheet is
+// named `uswds.scss` (the path the plan specifies), and `@forward 'uswds'` from
+// a file of that name resolves to the file ITSELF before the loadPaths package,
+// producing "Module loop: this module is already being loaded." Doing the import
+// from a differently-named partial sidesteps the self-collision entirely.
+//
+// The USWDS theme settings MUST be applied via `@use 'uswds-core' with (...)`
+// BEFORE the source is forwarded, so the tokens compile with them.
+//
+// ACCESSIBILITY RULES (quoted in uswds.scss, the two most likely to be broken):
+//   1. No custom color overrides outside the approved theme — AA contrast comes
+//      from the USWDS default tokens, so we keep to them here.
+//   2. The USWDS default focus ring is never overridden — nothing in this file
+//      or its entry restyles `:focus` or sets `outline: none`.
+
+@use 'uswds-core' with (
+  $theme-show-notifications: false,
+  $theme-show-compile-warnings: false
+);
+
+@forward 'uswds';

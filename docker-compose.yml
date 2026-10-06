@@ -428,6 +428,28 @@ services:
       retries: 30
       start_period: 120s
 
+  # ---------------------------------------------------------------------------
+  # Web — the thin USWDS shell
+  # ---------------------------------------------------------------------------
+  # The React UI, built by Dockerfile.web and served with `vite preview`. It
+  # publishes NO host port: the Caddy proxy fronts it (handle { reverse_proxy
+  # web:5173 }), so the UI, the API and the IdP all share the single TLS origin.
+  # That shared origin is what lets the OIDC redirect work without CORS or
+  # cookie-domain problems, and it is why the browser only ever sees same-origin
+  # relative paths (`/api/v1`, `/auth/*`).
+  web:
+    <<: *sandbox-dns
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:5173/']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
 volumes:
   pgdata:
   redisdata:

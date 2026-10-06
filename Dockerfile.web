@@ -1,0 +1,49 @@
+# =============================================================================
+# JudicialSync — the thin USWDS web shell
+# =============================================================================
+#
+# Builds `apps/web` (Vite + React) and serves the static build with
+# `vite preview`. Single-stage: `vite preview` is a devDependency and is needed
+# at runtime, so there is no "runtime-only" image to slim down to here.
+#
+# NOTE ON devDependencies: the whole toolchain for this package — vite, the
+# React plugin, sass, typescript, the static-copy plugin — lives in
+# devDependencies. Installing with `--omit=dev` (or exporting
+# NODE_ENV=production before install) strips them and the build dies. So `npm ci`
+# installs everything, and NODE_ENV is never forced to production before the
+# build. Binding `0.0.0.0` (never localhost/::1) is done via the preview CLI
+# flags so the Caddy proxy can reach it (sandbox runtime contract §2).
+# =============================================================================
+
+FROM node:20.20-alpine
+
+WORKDIR /app
+
+# Manifests first so the dependency layer caches independently of source.
+# npm-workspaces monorepo: the root lockfile and both workspace manifests must
+# be present before `npm ci` will resolve.
+COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/web/package.json ./apps/web/package.json
+
+# Reproducible install from the lockfile, devDependencies INCLUDED (see above).
+RUN npm ci --include=dev
+
+# The web sources and the committed OpenAPI contract the client is generated
+# from (the build does not regenerate; the committed generated client is used).
+COPY tsconfig.base.json ./
+COPY openapi ./openapi
+COPY apps/web ./apps/web
+
+# Type-check and bundle. USWDS fonts/img are copied into dist by the Vite config.
+RUN npm run build -w apps/web
+
+EXPOSE 5173
+
+# Liveness for the Compose healthcheck.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=12 \
+  CMD wget -q -O /dev/null http://127.0.0.1:5173/ || exit 1
+
+# `vite preview` serves the production build. Bind 0.0.0.0 so the proxy reaches
+# it; allowedHosts in vite.config permits the judicialsync.localhost origin.
+CMD ["npm", "run", "preview", "-w", "apps/web"]

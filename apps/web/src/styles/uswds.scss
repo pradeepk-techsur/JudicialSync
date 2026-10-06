@@ -1,0 +1,29 @@
+// =============================================================================
+// USWDS stylesheet entry — built from the Sass SOURCE, not a prebuilt CSS drop.
+// =============================================================================
+//
+// `TechArch/05-tech-stack.md` §8.1 names the `@uswds/uswds` Sass source
+// specifically, so a court can theme within USWDS constraints; a prebuilt CSS
+// drop could not be themed that way. The actual theme + source import lives in
+// `_theme.scss` (see that file for why: a `@forward 'uswds'` from a file named
+// `uswds.scss` would resolve to itself and loop).
+//
+// TWO RULES, QUOTED HERE BECAUSE THEY ARE THE TWO MOST LIKELY TO BE BROKEN BY A
+// LATER STYLING CHANGE — and the axe gate only catches the first of them:
+//
+//   1. "USWDS default color tokens meet AA contrast ratios out of the box; NO
+//      CUSTOM COLOR OVERRIDES PERMITTED outside the approved theme."
+//      (UX-Mockup/Y2-accessibility.md)
+//      => Keep to USWDS default tokens. Do not introduce raw hex colors or
+//         override token values with off-palette values.
+//
+//   2. "USWDS default FOCUS-RING styling is preserved, NEVER OVERRIDDEN by
+//      custom CSS." (UX-Mockup/Y2-accessibility.md)
+//      => Never add `outline: none` or restyle `:focus`. Keyboard users rely on
+//         the ring; axe cannot detect a focus ring that was silently removed.
+// =============================================================================
+
+// Imported from a subdirectory so its `@forward 'uswds'` cannot resolve to this
+// very file (both would otherwise sit in `src/styles/`, and Sass resolves
+// relative imports before loadPaths, producing a self-referential module loop).
+@forward 'uswds/theme';
