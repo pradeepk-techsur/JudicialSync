@@ -69,5 +69,12 @@ module.exports = {
     // and run under jest.files.config.js. Excluded here so `npm test` stays
     // hermetic.
     '/test/files-.*\\.e2e-spec\\.ts$',
+    // The `grants-sod` and `bootstrap` suites (plan 01-08) drive the real
+    // Keycloak, the real OPA (the SoD rule), and the real grant tables —
+    // including a raw `app_rw` UPDATE to exercise the table CHECK constraint, and
+    // startup bootstrap against the live database — and run under
+    // jest.grants.config.js. Excluded here so `npm test` stays hermetic.
+    '/test/grants-sod\\.e2e-spec\\.ts$',
+    '/test/bootstrap\\.e2e-spec\\.ts$',
   ],
 };
