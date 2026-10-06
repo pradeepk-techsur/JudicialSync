@@ -3,6 +3,8 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { AuditInternalController } from './audit-internal.controller';
 import { AuditService } from './audit.service';
+import { AuditExplorerController } from './explorer.controller';
+import { AuditExplorerService } from './explorer.service';
 
 /**
  * **Audit Service** — `TechArch/01-components.md` §4.1 · FRD F02.
@@ -43,8 +45,8 @@ import { AuditService } from './audit.service';
  */
 @Module({
   imports: [PrismaModule],
-  providers: [AuditService],
+  providers: [AuditService, AuditExplorerService],
   exports: [AuditService],
-  controllers: [AuditInternalController],
+  controllers: [AuditInternalController, AuditExplorerController],
 })
 export class AuditModule {}
