@@ -3,15 +3,15 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-07-PLAN.md (real ABAC enforcement against OPA, 403/404 split, access_attempt auditing)
-last_updated: "2026-10-05T21:54:36.833Z"
-last_activity: "2026-10-05 — Wave 5: 01-07 landed (AbacGuard enforces real OPA decisions; stopping OPA turns 200 into 503)"
+stopped_at: "Completed 01-10-PLAN.md (secure file upload: content-sniffed allowlist, real ClamAV scan, AES256 object store, byte round-trip)"
+last_updated: "2026-10-06T03:32:57.413Z"
+last_activity: "2026-10-06 — Wave 6: 01-10 landed (secure file upload: content-sniffed allowlist, real ClamAV INSTREAM scan, AES256 S3-compatible store, byte round-trip proven against the live stack)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 7
-  percent: 47
+  completed_plans: 8
+  percent: 53
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 ## Current Position
 
 Phase: 1 of 8 (Core Identity, Case Model, Audit & Security Baseline)
-Plan: 7 of 15 complete (wave 5: 01-07 landed; 01-08 next)
+Plan: wave 6 executing (01-10 landed; 01-08/01-09/01-11/01-12 running in parallel on this branch)
 Status: Executing
-Last activity: 2026-10-05 — Wave 5: 01-07 landed (AbacGuard enforces real OPA decisions; stopping OPA turns 200 into 503)
+Last activity: 2026-10-06 — Wave 6: 01-10 landed (secure file upload: content-sniffed allowlist, real ClamAV INSTREAM scan, AES256 S3-compatible store, byte round-trip proven against the live stack)
 
-Progress: [█████░░░░░] 47%
+Progress: [█████░░░░░] 53%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [█████░░░░░] 47%
 - Trend: 01-04, 01-06 and 01-07 are the outliers, for the same underlying reason — all three integrate against live external systems. 01-06's time went into five real defects in the gap between what the IdP documents and what it emits; 01-07's went into four found only by running the suites (an unreachable PDP address, an audit query matching login rows, a stale principal cache, a default parameter that swallowed an explicit undefined) plus two cross-plan fixture/config gaps that no single plan's tests could have seen. The pattern is consistent: time spent against a live stack buys defects that unit tests structurally cannot find.
 
 *Updated after each plan completion*
+| Phase 01 P10 | 3h 40m | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Every security_designations read goes through one activeDesignationsFor helper filtering revoked_at IS NULL: a missed filter is a false DENIAL, which users report as 'I lack the entitlement' rather than as a bug, so it can persist for the life of a record
 - [Phase 01]: The missing-@Resource() probe route lives in test code, never in the application: a real route missing its descriptor IS the bug the guard exists to catch, so shipping one to prove the guard works would ship the vulnerability to test the mitigation
 - [Phase 01]: /security/policy-evaluate accepts requester_scope for TechArch 6.9 shape compatibility and never lets it influence the decision (honouring it would be a complete authorization bypass), echoing disagreements under detail.supplied_scope_ignored so caller drift is visible rather than silent
+- [Phase 01]: 01-10: ClamAV error (timeout/unreachable) is a distinct result mapped to 503 SECURITY_SCANNER_UNAVAILABLE — treating an unreachable scanner as clean is the single most likely way the control gets quietly disabled; the EICAR + scanner-stop e2e cases prove it against real clamd
+- [Phase 01]: 01-10: file bytes move through the authenticated API in both directions and the object store exposes no URL-signing method — a signed URL would target the store's internal address the browser cannot reach; grep proves getSignedUrl/presign absent from apps/api/src
+- [Phase 01]: 01-10: ESM-only file-type@19 is bridged into the CommonJS build via a Function-constructor dynamic import tsc cannot rewrite; Jest's VM needs --experimental-vm-modules to run it, so the stack-dependent files suites set NODE_OPTIONS accordingly
 
 ### Pending Todos
 
@@ -137,6 +141,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-05T21:54:36.831Z
-Stopped at: Completed 01-07-PLAN.md (real ABAC enforcement against OPA, 403/404 split, access_attempt auditing)
+Last session: 2026-10-06T03:32:27.744Z
+Stopped at: Completed 01-10-PLAN.md (secure file upload: content-sniffed allowlist, real ClamAV scan, AES256 object store, byte round-trip)
 Resume file: None
