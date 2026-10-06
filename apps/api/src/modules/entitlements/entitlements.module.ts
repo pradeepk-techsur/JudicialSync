@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
+import { BootstrapController } from './bootstrap.controller';
+import { BootstrapService } from './bootstrap.service';
 import { GrantsController } from './grants.controller';
 import { GrantsService } from './grants.service';
 
@@ -38,8 +40,8 @@ import { GrantsService } from './grants.service';
  */
 @Module({
   imports: [PrismaModule, AuditModule],
-  controllers: [GrantsController],
-  providers: [GrantsService],
-  exports: [GrantsService],
+  controllers: [GrantsController, BootstrapController],
+  providers: [GrantsService, BootstrapService],
+  exports: [GrantsService, BootstrapService],
 })
 export class EntitlementsModule {}
