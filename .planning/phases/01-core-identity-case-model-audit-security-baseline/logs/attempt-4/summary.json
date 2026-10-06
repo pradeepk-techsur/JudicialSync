@@ -1,0 +1,20 @@
+{
+  "duration_secs": 350.0,
+  "token_usage": {
+    "input": 76,
+    "output": 15936,
+    "total": 3647363,
+    "cache_read": 3488964,
+    "cache_write": 142387,
+    "cost": 3.0331807499999996
+  },
+  "model": "claude-opus-4-8",
+  "files_changed": [
+    ".planning/phases/01-core-identity-case-model-audit-security-baseline/01-GATE.md"
+  ],
+  "verification_status": "passed",
+  "error_message": null,
+  "attempt_number": 4,
+  "created_at": "2026-10-06T08:57:03.776168+00:00",
+  "completed_at": "2026-10-06T09:02:53.793690977+00:00"
+}
