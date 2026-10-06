@@ -1,0 +1,16 @@
+{
+  "generator_version": "init-dev-server@1",
+  "catalog_entry": "compose",
+  "generated_at": "2026-10-06T08:10:59Z",
+  "inspection_inputs_hash": "9fd743eb9f9f7fc0302a7c35d4813755f0ab87c84331f0ad88ff47a1af293077",
+  "inspection_inputs": {
+    "matched_globs": [
+      "*compose.y*ml",
+      "package.json"
+    ],
+    "manifest_signatures": [
+      "docker-compose.yml:services:api,clamav,db,keycloak,minio,opa,proxy,redis,web"
+    ],
+    "existing_scripts": []
+  }
+}
