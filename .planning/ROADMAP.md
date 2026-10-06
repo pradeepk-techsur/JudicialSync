@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Phase 1: Core Identity, Case Model, Audit & Security Baseline
 **Goal**: Establish the trusted substrate — authenticated, scoped access; one shared case/docket model; tamper-evident audit; baseline security controls — so every later feature has a safe, consistent foundation rather than re-implementing identity, case context, or audit logic per module.
-**Status**: In progress
+**Status**: Awaiting verify
 **Depends on**: Nothing (first phase)
 **Requirements**: F0, F1, F2, F13
 **Success Criteria** (what must be TRUE):
@@ -140,7 +140,7 @@ Phases execute in numeric order for bookkeeping: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Core Identity, Case Model, Audit & Security Baseline | 0/15 | In progress | - |
+| 1. Core Identity, Case Model, Audit & Security Baseline | 0/15 | Awaiting verify | - |
 | 2. Platform Configuration & Communication Services | 0/TBD | Not started | - |
 | 3. Workflow Aggregation & CM/ECF Sync | 0/TBD | Not started | - |
 | 4. Role-Specific UI Workspaces & External Attorney Portal | 0/TBD | Not started | - |
