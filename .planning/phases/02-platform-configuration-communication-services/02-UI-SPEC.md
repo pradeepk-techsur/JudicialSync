@@ -1,8 +1,9 @@
 ---
 phase: 2
 slug: platform-configuration-communication-services
-status: draft
+status: approved
 revision: 2
+reviewed_at: 2026-10-06
 design_system: uswds
 shadcn_initialized: false
 preset: not applicable — USWDS is contractually binding per .planning/PROJECT.md
@@ -847,14 +848,43 @@ silently changed.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Component Inventory (USWDS — replaces Registry Safety): PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Component Inventory (USWDS — replaces Registry Safety): PASS
 
-**Approval:** pending
+**Approval:** approved 2026-10-06 (revision 2)
+
+### Verification notes
+
+Round 1 returned BLOCKED on Dimensions 3 and 4. Dimension 3 (Tag foreground contrast and the accent
+budget) was a genuine defect and was fixed in revision 2. **Dimension 4 was a false positive** — the
+checker's token→scale mapping was wrong and the original type table was correct in every row. The
+checker withdrew the finding after four independent cross-checks against published USWDS values
+(`$theme-body-font-size: 'sm'` = 16px; `h1`/`h2`/`h3` = 40/32/22px against `2xl`/`xl`/`lg`;
+`$theme-lead-font-size: 'lg'` = 22px; `$theme-h6-font-size: '3xs'` = 13px). No token table in this
+contract is fabricated.
+
+### Open items carried past approval (non-blocking)
+
+Approval of this design contract is **not** adjudication of the Discrepancy register. Three entries
+describe cases where this contract and an already-written plan cannot both be satisfied, and need a
+human decision before planning consumes this document:
+
+- **D-1 (High)** — no Tabs component exists in USWDS 3.x / `@trussworks/react-uswds`; plan 02-13
+  assumes one.
+- **D-2 / D-11 (High)** — `disabled` appears at six Publish-control sites in plan 02-13; the contract
+  requires `aria-disabled` for keyboard/screen-reader reachability.
+- **D-9 (High)** — the contract's unsupported-filters copy fails plan 02-15's own
+  `grep 'not applied\|not searchable'` verification gate.
+
+Three further precision items were raised at approval and are recorded but unresolved: the Draft-Tag
+ratio at line 305 (declared 16.1:1, recomputes to 17.2:1); a `base-dark` / `base-darker` token
+labelling collision between lines 199 and 286–287/313; and the shell-header bell's button variant,
+which is unspecified and should be named `usa-button--unstyled` so the header accent budget cannot be
+exceeded by accident. None affects WCAG AA conformance.
 
 ---
 
