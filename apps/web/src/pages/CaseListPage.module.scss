@@ -1,0 +1,67 @@
+/*
+ * CaseListPage layout — LAYOUT RULES ONLY.
+ *
+ * `UX-Mockup/Y2-accessibility.md`: "no custom color overrides permitted outside
+ * the approved theme" and "Tables degrade to stacked card-per-row at mobile
+ * widths rather than requiring two-dimensional scrolling (1.4.10)."
+ *
+ * So this file contains NO literal colour values at all — colour comes
+ * entirely from the USWDS theme tokens the <Table> already carries. What it DOES
+ * contain is the responsive stacked-card degradation: below the tablet
+ * breakpoint each row becomes a card and each cell shows its column name from the
+ * `data-label` attribute the component sets. This keeps the data readable on a
+ * narrow screen without two-dimensional scrolling and without a horizontal
+ * scrollbar on the body.
+ */
+
+/* USWDS tablet breakpoint (640px). Above it, the ordinary table renders. */
+$stack-below: 640px;
+
+.responsiveTable {
+  /* No horizontal overflow on the container itself — the stacked layout below
+     removes the need for two-dimensional scrolling entirely at small widths. */
+  width: 100%;
+}
+
+.caseTable {
+  width: 100%;
+}
+
+@media (max-width: $stack-below) {
+  .caseTable {
+    /* Collapse the tabular structure into a vertical stack of cards. */
+    thead {
+      /* Visually hidden but kept in the accessibility tree is unnecessary here:
+         each cell carries its own label via data-label, so the header row is
+         redundant on the stacked layout and is removed from view. */
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    tr {
+      display: block;
+      margin-bottom: 1rem;
+    }
+
+    td {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      text-align: right;
+      width: 100%;
+
+      /* The column name, taken from the cell's data-label attribute. */
+      &::before {
+        content: attr(data-label);
+        font-weight: 700;
+        text-align: left;
+      }
+    }
+  }
+}

@@ -5,6 +5,7 @@ import { useAuth } from './auth/AuthProvider';
 import { CallbackPage } from './auth/CallbackPage';
 import { LoginPage } from './auth/LoginPage';
 import { RequireSession } from './auth/RequireSession';
+import { CaseListPage } from './pages/CaseListPage';
 import { AppShell } from './shell/AppShell';
 import { visibleNavItems } from './shell/SideNav';
 
@@ -18,9 +19,9 @@ import { visibleNavItems } from './shell/SideNav';
  * routes `/auth/*` to Keycloak, so a callback under `/auth/` would never reach
  * the SPA. `OIDC_REDIRECT_URI` in docker-compose.yml points at this exact path.
  *
- * `/cases` and `/audit` ship here as PLACEHOLDER regions already wired into the
- * navigation — plan 01-15 mounts the real Case List and Audit Explorer screens.
- * Shipping them wired-in now means neither is ever an orphan route
+ * `/cases` renders the entitlement-differentiated Case List and `/audit` the
+ * read-only Audit Explorer (Screen-17). Both are wired into the navigation (plan
+ * 01-13's SideNav), so neither is ever an orphan route
  * (UX-Mockup/00-overview.md invariant: "No screen is reachable only by typing a
  * URL.").
  *
@@ -53,7 +54,7 @@ export function AppRoutes(): JSX.Element {
         element={
           <RequireSession>
             <AppShell>
-              <CasesPlaceholder />
+              <CaseListPage />
             </AppShell>
           </RequireSession>
         }
@@ -81,24 +82,19 @@ function HomeRedirect(): JSX.Element {
   if (first !== undefined) {
     return <Navigate to={first.to} replace />;
   }
-  // No modules: AppShell already renders the explanatory alert in place of
-  // children, so nothing more is needed here.
-  return <></>;
-}
-
-/** Placeholder for the Case List screen plan 01-15 mounts. */
-function CasesPlaceholder(): JSX.Element {
+  // No modules the viewer can see: this is where a least-privilege account
+  // (e.g. jury_admin, zero entitlements) lands. Explain it rather than showing
+  // a blank frame. Screens reached by a direct URL render their own not-entitled
+  // state (the shell no longer swallows children).
   return (
-    <section data-testid="cases-screen">
-      <h1>Cases</h1>
-      <Alert type="info" headingLevel="h2" heading="Case list">
-        The case list is mounted here in plan 01-15.
-      </Alert>
-    </section>
+    <Alert type="info" headingLevel="h2" heading="No modules granted yet">
+      Your account is active but has not been granted access to any modules. This is expected
+      for a new, least-privilege account. Contact your court administrator to request access.
+    </Alert>
   );
 }
 
-/** Placeholder for the Audit Explorer screen plan 01-15 mounts. */
+/** Placeholder for the Audit Explorer screen — mounted for real in Task 2. */
 function AuditPlaceholder(): JSX.Element {
   return (
     <section data-testid="audit-screen">

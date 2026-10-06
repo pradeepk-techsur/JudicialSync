@@ -1,5 +1,4 @@
 import {
-  Alert,
   Button,
   GovBanner,
   GridContainer,
@@ -10,7 +9,7 @@ import {
 import type { ReactNode } from 'react';
 
 import { useAuth } from '../auth/AuthProvider';
-import { SideNav, visibleNavItems } from './SideNav';
+import { SideNav } from './SideNav';
 
 /**
  * ============================================================================
@@ -30,11 +29,21 @@ import { SideNav, visibleNavItems } from './SideNav';
  * (SideNav) and `main` — is deliberate: `UX-Mockup/Y2-accessibility.md`'s
  * "consistent navigation (3.2.3)" depends on it, and Phase 4 inherits whatever
  * structure ships here.
+ *
+ * ## The shell always renders its children
+ *
+ * The shell does NOT decide whether the viewer may see a given screen — each
+ * screen owns its own entitlement state (the Case List shows a not-entitled
+ * alert for a user without `case_read`; the Audit Explorer surfaces the server's
+ * `AUDIT_READ_DENIED`). A direct URL visit by a least-privilege user (e.g.
+ * `jury_admin`, zero entitlements) must therefore land on that screen's own
+ * coherent empty/denied state, not be swallowed by the shell. The
+ * "no modules granted" message for such a user lives on the index route
+ * (`HomeRedirect` in `routes.tsx`), which is where a user with nowhere to go
+ * actually lands.
  */
 export function AppShell({ children }: { children: ReactNode }): JSX.Element {
-  const { principal, hasEntitlement, logout } = useAuth();
-
-  const hasAnyModule = visibleNavItems(hasEntitlement).length > 0;
+  const { principal, logout } = useAuth();
 
   return (
     <>
@@ -74,15 +83,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
             <SideNav />
           </div>
           <main id="main-content" className="desktop:grid-col-9">
-            {hasAnyModule ? (
-              children
-            ) : (
-              <Alert type="info" headingLevel="h2" heading="No modules granted yet">
-                Your account is active but has not been granted access to any modules. This is
-                expected for a new, least-privilege account. Contact your court administrator to
-                request access.
-              </Alert>
-            )}
+            {children}
           </main>
         </div>
       </GridContainer>
