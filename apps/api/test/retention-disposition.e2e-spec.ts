@@ -56,6 +56,57 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
   let adminDb: Client;
   let available = false;
 
+  /**
+   * Session-token cache, one per user.
+   *
+   * The real-IdP harness does a full browser login with a one-time-use TOTP
+   * code for every `loginAs`, and Keycloak rejects a code reused inside its
+   * 30-second window — so a suite that logs in ~20 times sequentially spends
+   * most of its wall-clock waiting out TOTP windows, and occasionally fails a
+   * login outright to contention. Logging in ONCE per user and reusing the
+   * session token removes that: a session token stays valid for the whole run,
+   * and the tests here never need a *new* session, only a valid one.
+   *
+   * The two tests that call `revokeAllForUser` evict the affected user from
+   * this cache themselves (via {@link freshLogin}) so a later test re-logs in
+   * rather than reusing a revoked token.
+   */
+  const tokenCache = new Map<string, string>();
+
+  const tokenFor = async (
+    user:
+      | 'court_admin'
+      | 'clerk_case_admin'
+      | 'security_officer'
+      | 'system_admin',
+  ): Promise<string> => {
+    const cached = tokenCache.get(user);
+    if (cached !== undefined) return cached;
+    const { session_token } = await loginAs(app, user);
+    tokenCache.set(user, session_token);
+    return session_token;
+  };
+
+  /** A `{ session_token }` shape, from the per-user cache. */
+  const loginCached = async (
+    _app: unknown,
+    user:
+      | 'court_admin'
+      | 'clerk_case_admin'
+      | 'security_officer'
+      | 'system_admin',
+  ): Promise<{ session_token: string }> => ({
+    session_token: await tokenFor(user),
+  });
+
+  /** Force a fresh login, replacing any cached token (used after a revoke). */
+  const freshLogin = async (
+    user: 'court_admin',
+  ): Promise<{ session_token: string }> => {
+    tokenCache.delete(user);
+    return { session_token: await tokenFor(user) };
+  };
+
   beforeAll(async () => {
     available = await requireStack();
     if (!available) return;
@@ -110,7 +161,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
   it('court_admin reads the four seeded schedules; clerk_case_admin is denied', async () => {
     if (!available) return;
 
-    const admin = await loginAs(app, 'court_admin');
+    const admin = await loginCached(app, 'court_admin');
     const ok = await bearer(
       `/api/v1/retention/schedules?court_id=${NDCA_COURT_ID}`,
       admin.session_token,
@@ -126,7 +177,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
       'file_reference',
     ]);
 
-    const clerk = await loginAs(app, 'clerk_case_admin');
+    const clerk = await loginCached(app, 'clerk_case_admin');
     const denied = await bearer(
       `/api/v1/retention/schedules?court_id=${NDCA_COURT_ID}`,
       clerk.session_token,
@@ -141,7 +192,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
   it('due-for-disposition is empty for fresh data and lists a back-dated case', async () => {
     if (!available) return;
 
-    const admin = await loginAs(app, 'court_admin');
+    const admin = await loginCached(app, 'court_admin');
 
     // With freshly seeded data no case_record is past its 7300-day window.
     const fresh = await bearer(
@@ -169,7 +220,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
 
       const after = await bearer(
         `/api/v1/retention/due-for-disposition?court_id=${NDCA_COURT_ID}`,
-        (await loginAs(app, 'court_admin')).session_token,
+        (await loginCached(app, 'court_admin')).session_token,
       );
       expect(after.status).toBe(200);
       const plain = after.body.records.find(
@@ -203,7 +254,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
 
       // court_admin holds retention_viewer but NOT designation_sealed, so the
       // sealed case must not appear in the maintenance listing.
-      const admin = await loginAs(app, 'court_admin');
+      const admin = await freshLogin('court_admin');
       const adminRes = await bearer(
         `/api/v1/retention/due-for-disposition?court_id=${NDCA_COURT_ID}`,
         admin.session_token,
@@ -236,7 +287,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
         '0a000004-0000-4000-8000-000000000007',
       );
 
-      const privileged = await loginAs(app, 'court_admin');
+      const privileged = await freshLogin('court_admin');
       const privilegedRes = await bearer(
         `/api/v1/retention/due-for-disposition?court_id=${NDCA_COURT_ID}`,
         privileged.session_token,
@@ -260,6 +311,9 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
       await app.get(SessionService).revokeAllForUser(
         '0a000004-0000-4000-8000-000000000007',
       );
+      // court_admin's sessions and entitlements were churned here; evict the
+      // cached token so later tests re-login with the restored (correct) state.
+      tokenCache.delete('court_admin');
     }
   });
 
@@ -285,7 +339,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
     if (!available) return;
 
     const before = await dispositionCount();
-    const clerk = await loginAs(app, 'clerk_case_admin');
+    const clerk = await loginCached(app, 'clerk_case_admin');
     const res = await postDisposition(clerk.session_token, {
       object_type: 'case',
       object_id: PLAIN_CASE_ID,
@@ -303,7 +357,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
     if (!available) return;
 
     const before = await dispositionCount();
-    const admin = await loginAs(app, 'court_admin');
+    const admin = await loginCached(app, 'court_admin');
     const res = await postDisposition(admin.session_token, {
       object_type: 'case',
       object_id: PLAIN_CASE_ID,
@@ -318,7 +372,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
     if (!available) return;
 
     const before = await dispositionCount();
-    const admin = await loginAs(app, 'court_admin');
+    const admin = await loginCached(app, 'court_admin');
     const res = await postDisposition(admin.session_token, {
       object_type: 'case',
       object_id: PLAIN_CASE_ID,
@@ -337,7 +391,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
     if (!available) return;
 
     const before = await dispositionCount();
-    const admin = await loginAs(app, 'court_admin');
+    const admin = await loginCached(app, 'court_admin');
     const res = await postDisposition(admin.session_token, {
       object_type: 'case',
       object_id: PLAIN_CASE_ID,
@@ -353,7 +407,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
     if (!available) return;
 
     const before = await dispositionCount();
-    const admin = await loginAs(app, 'court_admin');
+    const admin = await loginCached(app, 'court_admin');
     // A valid, complete, self-named confirmation — but carrying the internal
     // service token. The guard refuses it before the fields are even weighed:
     // no batch identity may dispose of a court record.
@@ -379,7 +433,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
     if (!available) return;
 
     const before = await dispositionCount();
-    const admin = await loginAs(app, 'court_admin');
+    const admin = await loginCached(app, 'court_admin');
     const res = await postDisposition(admin.session_token, {
       object_type: 'case',
       object_id: PLAIN_CASE_ID,
@@ -421,7 +475,7 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
   it('an unknown disposition_action → 501', async () => {
     if (!available) return;
 
-    const admin = await loginAs(app, 'court_admin');
+    const admin = await loginCached(app, 'court_admin');
     const res = await postDisposition(admin.session_token, {
       object_type: 'case',
       object_id: PLAIN_CASE_ID,
@@ -433,6 +487,99 @@ describe('retention-disposition: no automated purge is possible (e2e)', () => {
     });
     expect(res.status).toBe(501);
     expect(res.body.error_code).toBe('SECURITY_DISPOSITION_ACTION_UNSUPPORTED');
+  });
+
+  // =========================================================================
+  // Key access — separation of duties (Task 3)
+  // =========================================================================
+
+  const SYSTEM_ADMIN_ID = '0a000004-0000-4000-8000-000000000009';
+
+  const postRotate = (token: string, body: unknown): request.Test =>
+    request(app.getHttpServer())
+      .post('/api/v1/security/keys/rotate')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body as object);
+
+  const latestKeyDenial = async (userId: string): Promise<boolean> => {
+    const { rows } = await db.query<{ reason_code: string }>(
+      `SELECT after_state->>'reason_code' AS reason_code
+         FROM platform.audit_events
+        WHERE actor_id = $1
+          AND action_type = 'access_attempt'
+          AND object_type = 'encryption_key'
+          AND after_state->>'outcome' = 'denied'
+        ORDER BY occurred_at DESC, id DESC
+        LIMIT 1`,
+      [userId],
+    );
+    return rows[0]?.reason_code === 'SECURITY_KEY_ACCESS_DENIED';
+  };
+
+  it('security_officer rotates keys → 202, audit event written', async () => {
+    if (!available) return;
+
+    const officer = await loginCached(app, 'security_officer');
+    const res = await postRotate(officer.session_token, {
+      rationale: 'scheduled quarterly key rotation',
+    });
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe('recorded');
+
+    const audit = await db.query(
+      `SELECT id FROM platform.audit_events
+        WHERE actor_id = $1 AND action_type = 'config_change'
+          AND object_type = 'encryption_key'`,
+      ['0a000004-0000-4000-8000-00000000000a'],
+    );
+    expect(audit.rows.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('system_admin cannot rotate keys — key access is separated from routine administration', async () => {
+    if (!available) return;
+
+    // system_admin performs routine administration and does NOT hold
+    // key_custodian — the separation of duties FRD/F13 requires. Testing it
+    // against system_admin rather than an obviously-unprivileged role is the
+    // whole point.
+    const sysadmin = await loginCached(app, 'system_admin');
+    const res = await postRotate(sysadmin.session_token, {
+      rationale: 'attempting a rotation without key custody',
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.error_code).toBe('SECURITY_KEY_ACCESS_DENIED');
+    expect(await latestKeyDenial(SYSTEM_ADMIN_ID)).toBe(true);
+  });
+
+  it('clerk_case_admin cannot rotate keys → 403', async () => {
+    if (!available) return;
+
+    const clerk = await loginCached(app, 'clerk_case_admin');
+    const res = await postRotate(clerk.session_token, {
+      rationale: 'attempting a rotation with no privilege at all',
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.error_code).toBe('SECURITY_KEY_ACCESS_DENIED');
+  });
+
+  it('a rotation request without a rationale → 422', async () => {
+    if (!available) return;
+
+    const officer = await loginCached(app, 'security_officer');
+    const res = await postRotate(officer.session_token, {});
+    expect(res.status).toBe(422);
+  });
+
+  it('GET /security/keys/status reports the Phase 1 posture for a custodian', async () => {
+    if (!available) return;
+
+    const officer = await loginCached(app, 'security_officer');
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/security/keys/status')
+      .set('Authorization', `Bearer ${officer.session_token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.at_rest.object_store).toBe('SSE-S3');
+    expect(res.body.in_transit).toContain('TLS');
   });
 
   // =========================================================================

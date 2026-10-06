@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../common/prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
 import { DispositionGuard } from './disposition.guard';
+import { KeyAccessController } from './key-access.controller';
 import { RetentionController } from './retention.controller';
 import { RetentionService } from './retention.service';
 
@@ -30,7 +31,7 @@ import { RetentionService } from './retention.service';
  */
 @Module({
   imports: [PrismaModule, AuditModule],
-  controllers: [RetentionController],
+  controllers: [RetentionController, KeyAccessController],
   providers: [RetentionService, DispositionGuard],
   exports: [RetentionService, DispositionGuard],
 })
