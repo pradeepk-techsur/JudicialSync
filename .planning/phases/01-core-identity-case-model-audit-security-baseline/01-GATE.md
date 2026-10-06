@@ -3,11 +3,12 @@ phase: 01
 gate_status: passed_with_warnings
 build_command: "npm run build"
 test_command: "npm test"
-last_updated: 2026-10-06T07:51:43Z
+last_updated: 2026-10-06T07:51:54Z
 tests_disabled_during_fixes: none
 shadowed_sources: 0
 ungated_waves: [5]
 review_blockers_open: 0
+boot_smoke: skipped
 waves:
   - wave: 1
     build: pass
