@@ -3,14 +3,14 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 01-10-PLAN.md (secure file upload: content-sniffed allowlist, real ClamAV scan, AES256 object store, byte round-trip)"
-last_updated: "2026-10-06T03:32:57.413Z"
+stopped_at: Completed 01-09-PLAN.md (shared case/docket model API, provenance, designation changes, no-delete proof)
+last_updated: "2026-10-06T03:40:13.534Z"
 last_activity: "2026-10-06 — Wave 6: 01-10 landed (secure file upload: content-sniffed allowlist, real ClamAV INSTREAM scan, AES256 S3-compatible store, byte round-trip proven against the live stack)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 8
+  completed_plans: 9
   percent: 53
 ---
 
@@ -123,6 +123,10 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-10: ClamAV error (timeout/unreachable) is a distinct result mapped to 503 SECURITY_SCANNER_UNAVAILABLE — treating an unreachable scanner as clean is the single most likely way the control gets quietly disabled; the EICAR + scanner-stop e2e cases prove it against real clamd
 - [Phase 01]: 01-10: file bytes move through the authenticated API in both directions and the object store exposes no URL-signing method — a signed URL would target the store's internal address the browser cannot reach; grep proves getSignedUrl/presign absent from apps/api/src
 - [Phase 01]: 01-10: ESM-only file-type@19 is bridged into the CommonJS build via a Function-constructor dynamic import tsc cannot rewrite; Jest's VM needs --experimental-vm-modules to run it, so the stack-dependent files suites set NODE_OPTIONS accordingly
+- [Phase 01]: 01-09: CaseContextService is the single shared case-context read surface (getCaseContext/listCasesForPrincipal) — the structural answer to criterion 2; single reads never re-filter by court (the PDP is the one authority), list reads apply scope+designation exclusion as a SQL pre-filter so a sealed case never enters the result set or the count
+- [Phase 01]: 01-09: Removal is a status transition, never a delete — proven at three layers (HTTP DELETE→404/405, no @Delete/.delete in source, raw DELETE FROM cases as app_rw→42501); duplicate case_number and duplicate docket source are caught from the Prisma P2002 unique violation, never pre-checked (a pre-check races, the constraint cannot)
+- [Phase 01]: 01-09: Full provenance ships now — source_system='manual'+generated source_identifier for manual entry, CASE_EVENT_MISSING_SOURCE for a non-manual event without one, locally_modified flipped ONLY on a PATCH of a synced record; zero conflict logic (Phase 3 owns it). Lifting a designation requires holding that designation's entitlement, because the loader resolves the target WITH its current designations
+- [Phase 01]: 01-09: CASE_DESIGNATION_DENIED is registered in abac.guard.ts's RESOURCE_REASON_OVERRIDES table (the sanctioned per-feature extension point) rather than special-cased in the handler; CASE_PROCEEDING_IN_USE ships in final form behind an injectable ProceedingActivityProbe (Phase 1 returns no-activity, Phases 5/7 rebind it) and is proven by a hermetic stub-probe unit test
 
 ### Pending Todos
 
@@ -138,9 +142,10 @@ None yet.
 - ASM-10 (from 01-06): `SESSION_TOKEN_SECRET` is consumed by `SessionService` but is absent from `.env.example`, which plan 01-01 owns and this plan could not modify. Unset, each process derives an ephemeral HMAC key, so access tokens do not survive a restart and do not validate across multiple instances — correct for local development and fatal for any multi-instance deployment. It is logged loudly at boot, but nothing fails. A later plan that may edit `.env.example` should declare it (marked `[SECRET]`, resolved from the secrets manager in production), and the Compose `api` service should set it.
 - DEF-01 (from 01-07, full detail in the phase's `deferred-items.md`): the seeded `judge` CANNOT read the seeded sealed case, so the **positive** half of Phase 1 criterion 4 is not demonstrable from the seed as it stands. 01-04 gives `judge` a `case` scope row on the PLAIN case, and under 01-02's narrowing semantics one such row confines the principal to exactly the cases named — the sealed read is therefore denied on SCOPE, before designation is ever considered. Both plans are individually correct and were never checked against each other; neither plan's tests could have caught it (01-02 uses synthetic principals, 01-04 asserts rows exist rather than what they authorize). 01-07's guard suite adds the row in-test and asserts BOTH states, so the semantics stay pinned. One-row fix in `seed/identity.ts` recommended to 01-14. Do NOT "fix" it by removing the narrowing — that would let every case-scoped principal, including the Phase 4 external attorney, reach every case in their court.
 - DEF-02 (from 01-07, PRE-EXISTING, full detail in `deferred-items.md`): `INTERNAL_SERVICE_TOKEN` is absent from `docker-compose.yml`'s `api` environment, so BOTH internal service routes — 01-05's `POST /audit/events` and 01-07's `POST /security/policy-evaluate` — return 403 in the deployed stack. `ServiceTokenGuard` failing closed on an unset secret is correct behaviour, so the symptom is the control working over a config gap. Nothing caught it because the in-process suites set the variable themselves and structurally cannot observe what Compose forwards, making this a coverage gap as much as a configuration one. One-line fix (the `:?` required-secret form the other secrets already use) recommended to 01-14, ideally with a test that calls an internal route through the deployed container.
+- DEF-03 (01-09): ChainVerifier flags prev_hash breaks over the shared test DB; all genuine orphans are access_attempt rows (01-07), never 01-09 case writes. Shared-test-DB artefact, not a production defect. Detail in deferred-items.md; for 01-12/01-14.
 
 ## Session Continuity
 
-Last session: 2026-10-06T03:32:27.744Z
-Stopped at: Completed 01-10-PLAN.md (secure file upload: content-sniffed allowlist, real ClamAV scan, AES256 object store, byte round-trip)
+Last session: 2026-10-06T03:39:42.381Z
+Stopped at: Completed 01-09-PLAN.md (shared case/docket model API, provenance, designation changes, no-delete proof)
 Resume file: None

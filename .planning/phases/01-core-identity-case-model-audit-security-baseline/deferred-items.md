@@ -119,3 +119,45 @@ with two silently dead endpoints. Plan **01-14** (assurance) is the natural
 owner, and the durable fix is a test that calls an internal route through the
 deployed container rather than in-process — the gap is a *coverage* gap as much
 as a configuration one.
+
+---
+
+## DEF-03 (from 01-09): ChainVerifier reports `prev_hash_mismatch` breaks over the shared test database, all on `access_attempt` rows
+
+**Status:** Observation, not a defect introduced by 01-09. Pre-existing, surfaced
+by the volume of audit rows that accumulate across repeated live-stack suite runs
+against the persistent Compose database.
+
+**What was seen.** On every boot of a test app against the shared stack,
+`ChainVerifierService` (plan 01-12) logs `AUDIT_CHAIN_BROKEN` with a growing break
+count (observed up to 55 breaks over 379 rows) and writes `integrity_alerts`.
+
+**What it actually is.** A direct `prev_hash → row_hash` linkage walk shows only a
+small number of genuine *orphan* rows (prev_hash matching no existing row_hash):
+**14 orphans, and every one is an `access_attempt` event**, never a
+`status_change` or `designation_change`. Plan 01-09's own audit writes
+(case/proceeding/party/docket/designation mutations, all through `withAudit`)
+chain correctly — zero orphans among them. The verifier's larger "55 breaks"
+count is the ripple of ordering: it walks by `(occurred_at, id)`, and once an
+orphan appears, every subsequent row's `prev_hash` disagrees with the
+`occurred_at`-ordered predecessor even though the true linked chain is intact.
+
+**Why `access_attempt` specifically.** Those events are written by plan 01-07's
+`AbacGuard.auditDenial` through `recordStandaloneAudit` — a standalone transaction
+with no domain write to serialise behind. Under the shared test database, many
+suites (auth, abac, case) write denials concurrently/interleaved across separate
+app instances, and the chain-head lock serialises each *write* correctly but the
+`occurred_at` timestamps of independently-committed standalone events can
+interleave such that the verifier's ordering-based walk sees a mismatch. The
+accumulation is an artefact of a long-lived shared test volume, not of production
+behaviour (where the verifier runs against a single writer's chain).
+
+**Consequence.** None for 01-09 — the case model's audit writes are correct and
+atomic. The noise is confined to the test environment's `access_attempt` history.
+
+**Recommended follow-up (NOT 01-09's to take).** Plan 01-12 owns the verifier;
+plan 01-14 (assurance) owns the clean-DB guarantees. Either (a) the live-stack
+suites should truncate `audit_events`/reset the chain head between runs so the
+verifier walks a chain built by one run, or (b) the verifier's ordering should be
+reconsidered for the standalone-event case. A clean-boot verification (fresh
+volume) is the authoritative check and is unaffected.
