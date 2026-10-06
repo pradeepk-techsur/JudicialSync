@@ -125,7 +125,23 @@ Plans:
   1. Each internal role (judge/chambers, clerk, courtroom deputy, admin) sees a distinct workspace shell — built from shared USWDS components — optimized for that role's working pattern, and the shell passes a baseline Section 508 accessibility check.
   2. An external attorney logs into a structurally separate portal (distinct OIDC client/audience) and can submit structured exhibit metadata and view authorized deadline information, but an attempted write call against the official ledger/docket/calculation endpoints is rejected at the API layer — not merely absent from the portal's navigation.
   3. A session token issued for the external attorney portal is rejected by internal-only (judge/clerk/admin) endpoints, confirmed by a deliberate cross-realm request being denied.
-**Plans**: TBD
+**Plans**: 14 plans
+
+Plans:
+- [ ] 04-01-PLAN.md — Portal submission staging table, external_principals, and the audit/file external-actor widening (wave 1)
+- [ ] 04-02-PLAN.md — OPA portal policy: realm confinement, party-of-record 404, absolute designation deny, composed into all_denials (wave 1)
+- [ ] 04-03-PLAN.md — Shared contracts: role→workspace map, complete slot catalogue, portal visibility with an unwaivable floor (wave 1)
+- [ ] 04-04-PLAN.md — External Keycloak realm, Compose and proxy topology, apps/portal build scaffold and import firewall (wave 1)
+- [ ] 04-05-PLAN.md — Phase 4 seed: attorney principals, CM/ECF-sourced party-of-record fixtures, sealed and negative-control cases, portal config (wave 2)
+- [ ] 04-06-PLAN.md — Workspace slot registry, entitlement-gated panel registration, build-time coverage report and CI gate (wave 2)
+- [ ] 04-07-PLAN.md — Workspace resolution API with validate-on-read and UI_NO_WORKSPACE_ASSIGNED (wave 2)
+- [ ] 04-08-PLAN.md — Portal capability: party-of-record 404/403 check order, case list, submission staging, Speedy Trial summary seam (wave 3)
+- [ ] 04-09-PLAN.md — Global audience/issuer guard, portal realm authentication, path-scoped session, composition root (wave 4)
+- [ ] 04-10-PLAN.md — OpenAPI contracts (full and portal-only), both clients, fifteen deviations, assumptions, error-code catalog (wave 5)
+- [ ] 04-11-PLAN.md — Two shell variants, registry-driven navigation, workspace homes, switcher, phase3-nav deletion, axe gate (wave 6)
+- [ ] 04-13-PLAN.md — Portal application: chrome, external login, Screen-19 submission, Screen-20 summary, portal axe gate (wave 6)
+- [ ] 04-12-PLAN.md — The eight Phase 4 workspace panel registrations and their entitlement gating (wave 7)
+- [ ] 04-14-PLAN.md — Named Phase 4 assurance suite: fourteen proofs plus machine-checked traceability (wave 8)
 
 ### Phase 5: Evidentiary Tracking Core
 **Goal**: Let clerks set up a proceeding for exhibit tracking, intake exhibit lists/files with validation, and let courtroom deputies log offers/objections/rulings in real time against one authoritative ledger — so no parallel paper log is needed during a live proceeding.
