@@ -27,3 +27,19 @@
 // very file (both would otherwise sit in `src/styles/`, and Sass resolves
 // relative imports before loadPaths, producing a self-referential module loop).
 @forward 'uswds/theme';
+
+// -----------------------------------------------------------------------------
+// Header stacking — LAYOUT ONLY (no colour, no focus-ring change).
+// -----------------------------------------------------------------------------
+// The USWDS `basic` header positions its secondary controls (the Sign out
+// button) with `position: absolute`, which can overflow the banner's box and
+// sit visually on top of the page content below it. With a short placeholder
+// page that was invisible; with the real, full-width Case List table it meant a
+// table cell overlapped the Sign out button and intercepted its clicks. Giving
+// the banner its own stacking context above the main content keeps the header's
+// controls clickable regardless of what the page below renders. This changes
+// stacking order only — no colours and no focus styling are touched.
+.usa-header {
+  position: relative;
+  z-index: 100;
+}
