@@ -1,9 +1,9 @@
 ---
 phase: 1
-status: issues_found
+status: fixes_applied
 blockers: 1
 warnings: 2
-review_blockers_open: 1
+review_blockers_open: 0
 files_reviewed: 28
 files_reviewed_list:
   - apps/api/src/main.ts
@@ -120,6 +120,18 @@ survives refutation as a BLOCKER.
   makes the verifier independent of any wall-clock assumption. (Note the Explorer's
   keyset pagination shares the `(occurred_at, id)` ordering, but there it is
   benign — it only affects page boundaries, not a correctness verdict.)
+- **Resolution:** fixed (987a5bc). The verifier now traverses by LINKAGE
+  (`prev_hash` → `row_hash`) from genesis instead of a `(occurred_at, id)`
+  re-sort. Rows are still fetched in `(occurred_at, id)` batches to stay
+  memory-bounded, but indexed by `prev_hash` and consumed in linkage order;
+  detached segments are localised to their head so a mid-chain tamper breaks the
+  chain once at the tampered point. Verified against the live Compose stack: the
+  old sort walk would report 103 `prev_hash` mismatches on the shared chain
+  (confirmed by a direct SQL `LAG` query), the linkage walk reports only the 26
+  genuine cuts (rows whose `prev_hash` names a non-existent `row_hash`). All 9
+  `audit-integrity-job` e2e cases and all 8 `criterion-3-audit-immutability`
+  assurance cases pass — deliberate `prev_hash`, tail-deletion and `row_hash`
+  tampers are still detected.
 
 ## WARNINGs
 
@@ -137,6 +149,15 @@ survives refutation as a BLOCKER.
   a future screen tries to render or filter by scope. Not a Phase 1 functional
   break, hence a WARNING. Fix direction: align the web interface to the generated
   contract (`scope_value`/`scope_enum_value`) or drive it from `types.gen.ts`.
+- **Resolution:** fixed (3b5002e). The root cause was the OpenAPI spec itself:
+  `apps/api/src/openapi.ts` declared the scope shape as `{scope_type, scope_id}`
+  while the API returns `{scope_type, scope_value?, scope_enum_value?}`
+  (`EntitlementsDto`/`ScopeAttribute`), so the *generated* web types carried the
+  same `scope_id` drift. Fixed `openapi.ts`, re-emitted `openapi/openapi.json`,
+  regenerated the web client (`types.gen.ts`/`schemas.gen.ts`), and aligned the
+  hand-written `AuthProvider.tsx` `ScopeAttribute` interface. Both `apps/api`
+  and `apps/web` `tsc --noEmit` pass; no remaining `scope_id` reference in
+  `apps/web/src`.
 
 ### W2: Multi-change designation updates write audit events whose before/after sets are each computed from the original set, so no single event reflects the cumulative state
 - **File:** apps/api/src/modules/case-context/designations.controller.ts:128-188 (loop over `added`/`removed`, `changeEvent` using `currentSet`)
@@ -153,6 +174,14 @@ survives refutation as a BLOCKER.
   with before/after state") is arguably weakened for the multi-change case. Fix
   direction: thread a running set through the loop so each event's before/after is
   the state immediately surrounding that single change.
+- **Resolution:** fixed (a7e46d1). A `runningSet` is now threaded through the
+  apply then revoke loops: each event's `before_state` is the set immediately
+  before that single change and its `after_state` the set after it, so
+  successive events chain (event n `after_state` == event n+1 `before_state`)
+  and the final event shows the true cumulative set. Tier 1 (re-read) and Tier 2
+  (`tsc --noEmit`) clean; the single-change `designations-api` e2e suite (5
+  cases) passes unchanged. No existing test exercises the multi-change chaining
+  path, so this carries a `requires human verification` flag for UAT.
 
 ## Observations (pre-existing / out of file-ownership — not phase-diff defects)
 
