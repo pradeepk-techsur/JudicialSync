@@ -3,14 +3,14 @@ pivota_spec_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-14-PLAN.md (negative-path assurance suite: 42 raw-HTTP/raw-SQL tests proving criteria 1,3,4,5 against the live stack; traceability matrix + CI gate)
-last_updated: "2026-10-06T05:12:46.235Z"
-last_activity: "2026-10-06 — Wave 7: 01-14 landed (standalone assurance suite — 42501 immutability, byte-identical 403/404 designation split, upload rejection-before-storage + TLS1.2+/AES256, docs/ASSURANCE.md traceability gate; no production code; DEF-01 confirmed, criterion 5 PARTIAL per ASM-07)"
+stopped_at: Completed 01-13-PLAN.md (thin USWDS shell, code-first OpenAPI client, release-blocking axe gate)
+last_updated: "2026-10-06T05:17:19.627Z"
+last_activity: "2026-10-06 — Wave 7: 01-13 landed (thin USWDS shell with real OIDC+TOTP browser login, code-first OpenAPI 3.1 contract + generated typed client, one generic entitlement-driven shell behind the Caddy TLS origin, and a release-blocking axe-core gate — 14 Playwright E2E+axe cases green against the live stack)"
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 15
-  completed_plans: 13
+  completed_plans: 14
   percent: 53
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 ## Current Position
 
 Phase: 1 of 8 (Core Identity, Case Model, Audit & Security Baseline)
-Plan: wave 7 executing (01-14 landed; 13 of 15 Phase-1 plans have SUMMARYs — 01-13 remains)
+Plan: wave 7 executing (01-13 and 01-14 landed; 14 of 15 Phase-1 plans have SUMMARYs — only 01-15 remains)
 Status: Executing
-Last activity: 2026-10-06 — Wave 7: 01-14 landed (standalone negative-path assurance suite proving criteria 1,3,4,5 over raw HTTP against the live stack + raw SQL as app_rw/app_dba; traceability matrix machine-checked; separate CI gate; no production code)
+Last activity: 2026-10-06 — Wave 7: 01-13 landed (thin USWDS shell with real OIDC+TOTP browser login, code-first OpenAPI 3.1 contract + generated typed client, one generic entitlement-driven shell behind the Caddy TLS origin, and a release-blocking axe-core gate — 14 Playwright E2E+axe cases green against the live stack)
 
 Progress: [█████░░░░░] 53%
 
@@ -69,6 +69,7 @@ Progress: [█████░░░░░] 53%
 | Phase 01 P11 | 83 min | 3 tasks | 12 files |
 | Phase 01 P08 | 4h 20m | 3 tasks | 12 files |
 | Phase 01-core-identity-case-model-audit-security-baseline P14 | 110 min | 3 tasks | 10 files |
+| Phase 01-core-identity-case-model-audit-security-baseline P13 | 3h 55m | 3 tasks | 40 files |
 
 ## Accumulated Context
 
@@ -136,6 +137,12 @@ Recent decisions affecting current work:
 - [Phase 01]: 01-11: Key-access routes are self-scoped with a controller-level key_custodian check (security_officer only, not system_admin) producing 403 SECURITY_KEY_ACCESS_DENIED + an access_attempt audit — the specific code cannot come from the global AbacGuard without editing 01-07's file, and encryption_key is a capability with no resource attributes to weigh
 - [Phase 01]: 01-08: separation of duties is enforced in THREE independent layers (Rego sod_deny rule, the GrantsService.approve check, the table CHECK decided_by<>requested_by), each proven to refuse a self-approval alone; the service check is deliberately redundant and a comment forbids removing any of the three — each catches a different bypass (lost guard, direct call, raw SQL)
 - [Phase 01]: 01-08: bootstrap supplies the second person from configuration rather than bypassing SoD — requested_by=admin and decided_by=distinct-approver so the table CHECK and Rego rule hold; identities come only from env (never from whoever authenticates earliest), lists must be disjoint or startup fails, and POST /bootstrap/complete closes the path permanently and cannot be invoked by a bootstrap-granted principal
+- [Phase 01]: 01-13: OpenAPI is CODE-FIRST — the 3.1 document is generated from the running NestJS route table and the TS client from that document; CI emits both and runs git diff --exit-code, so a controller change not reflected in the committed contract/client fails the build. The emit runs nest build then loads compiled JS because tsx/esbuild does not emit the design:paramtypes metadata @nestjs/swagger needs
+- [Phase 01]: 01-13: the OpenAPI document is served only in non-production, from a RAW EXPRESS route (not a controller), and the Swagger UI is not shipped — so neither global guard acquires a path-based exemption list (the place a future authenticated route would quietly land unguarded)
+- [Phase 01]: 01-13: the OIDC callback lands in the SPA at /login/callback, NEVER under /auth/* (Caddy routes /auth/* to Keycloak); OIDC_REDIRECT_URI matches that exact string on both the authorize request and the token exchange. The pre-existing value pointed at a non-existent API path and 404'd every login
+- [Phase 01]: 01-13: hasEntitlement is UI-gating ONLY and the SideNav is driven by computed entitlements, never role labels (grep-enforced); the server re-validates every call, so a forged client entitlement changes only what the UI draws. One generic USWDS shell for every role — per-role workspaces are Phase 4; Audit Explorer lives at /audit now and Phase 4 remounts it at /admin/audit
+- [Phase 01]: 01-13: GET /auth/entitlements now returns display_name (read from users.display_name, UI-only, no authority) so the shell shows the user's name not a UUID; the frontend wire shape uses role_name/scope_type to match the backend Principal
+- [Phase 01]: 01-13: the real OIDC+TOTP Playwright fixture (loginAs) reads the password and OTP secret from the seeded realm (Base32-encoding Keycloak's raw secretData.value) and handles TOTP single-use/window races; a global-setup clears Keycloak brute-force state so the gate measures the app, not the IdP rate limiter. axe-core blocks the build on any critical/serious violation — report-only was rejected
 - [Phase 01]: 01-14: the assurance suite is a BLACK BOX — it imports nothing from src/ or prisma/, drives raw fetch against the proxied running container and raw SQL as app_rw/app_dba, so no in-process behaviour can be mistaken for a guarantee; this is the structural difference between phase evidence and more feature tests
 - [Phase 01]: 01-14: criterion-3 immutability proven at the GRANT level (UPDATE/DELETE/TRUNCATE/trigger-tamper as app_rw → 42501, zero DELETE grants across platform.*) because an ORM-level refusal is exactly the 'application convention' criterion 3 rules out as insufficient; the role-asserting pg client (SELECT current_user on connect) stops the proof becoming a tautology over the wrong role
 - [Phase 01]: 01-14: chain-break assertions are scoped to the test's own corrupted audit_event_id and restore the head in a finally, never asserting the global chain_verified flag — the shared dev DB carries genuine prev_hash breaks from other suites' teardown (DEF-03), so a global assertion would fail for the wrong reason
@@ -161,6 +168,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-10-06T05:12:46.235Z
-Stopped at: Completed 01-14-PLAN.md (negative-path assurance suite — 42 tests, criteria 1/3/4/5, traceability gate, CI workflow; no production code)
+Last session: 2026-10-06T05:17:19.625Z
+Stopped at: Completed 01-13-PLAN.md (thin USWDS shell, code-first OpenAPI client, release-blocking axe gate)
 Resume file: None
