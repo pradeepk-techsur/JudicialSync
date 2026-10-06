@@ -39,11 +39,30 @@ module.exports = {
   // (`src/modules/policy/policy-contract.spec.ts`) deliberately stay in THIS
   // config — they stub the PDP over loopback and need no stack, so the
   // properties they pin are checked on every commit.
+  //
+  // The `grants-sod` and `bootstrap` suites (plan 01-08) are excluded for the
+  // same reason and run under jest.grants.config.js: they drive the real
+  // Keycloak, the real OPA (the SoD rule), and the real grant tables —
+  // including a raw `app_rw` UPDATE to exercise the table CHECK constraint, and
+  // startup bootstrap against the live database. None of that is hermetic.
+  //
+  // The case-model suites (plan 01-09) are excluded on identical grounds and
+  // run under jest.case.config.js: they sign in against the real Keycloak, let
+  // the real OPA decide every route, and one of them opens a raw `pg`
+  // connection as `app_rw` to prove the database refuses a DELETE.
+  // The `audit-explorer` and `audit-integrity-job` suites (plan 01-12) are
+  // excluded on the same grounds and run under jest.integrity.config.js: they
+  // drive the real Keycloak, OPA, database AND Redis (BullMQ needs it for the
+  // scheduled verification job), and the integrity suite corrupts audit rows as
+  // app_dba. The other `audit-*` suites (01-05) stay in THIS config — they use
+  // Testcontainers and need no Compose stack.
   testPathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
     '/assurance/',
     '/test/auth-.*\\.e2e-spec\\.ts$',
     '/test/abac-.*\\.e2e-spec\\.ts$',
+    '/test/audit-explorer\\.e2e-spec\\.ts$',
+    '/test/audit-integrity-job\\.e2e-spec\\.ts$',
   ],
 };

@@ -1,5 +1,11 @@
 import { Module } from '@nestjs/common';
 
+import { PrismaModule } from '../../common/prisma/prisma.module';
+import { AuditModule } from '../audit/audit.module';
+import { CaseContextService } from './case-context.service';
+import { CasesController } from './cases.controller';
+import { CasesService } from './cases.service';
+
 /**
  * **Case & Docket Context Service** —
  * `TechArch/01-components.md` §4.1 · FRD F01.
@@ -23,5 +29,12 @@ import { Module } from '@nestjs/common';
  *     record. Conflict detection is Phase 3, but deferring the COLUMNS would
  *     force a backfill across live court records with unknowable provenance.
  */
-@Module({})
+@Module({
+  imports: [PrismaModule, AuditModule],
+  controllers: [CasesController],
+  providers: [CasesService, CaseContextService],
+  // Exported so Phases 5–8 read case context through this one surface — the
+  // structural answer to Phase 1 criterion 2 (no shadow copy of case data).
+  exports: [CaseContextService],
+})
 export class CaseContextModule {}
