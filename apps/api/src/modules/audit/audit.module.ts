@@ -1,3 +1,4 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../../common/prisma/prisma.module';
@@ -5,6 +6,45 @@ import { AuditInternalController } from './audit-internal.controller';
 import { AuditService } from './audit.service';
 import { AuditExplorerController } from './explorer.controller';
 import { AuditExplorerService } from './explorer.service';
+import { ChainVerifierService } from './integrity/chain-verifier.service';
+import { IntegrityController } from './integrity/integrity.controller';
+import { IntegrityStatusService } from './integrity/integrity-status.service';
+import {
+  AUDIT_INTEGRITY_QUEUE,
+  IntegrityProcessor,
+} from './integrity/integrity.processor';
+
+/**
+ * Parse `REDIS_URL` into the connection options BullMQ needs.
+ *
+ * BullMQ (ioredis under the hood) accepts a URL, but passing the parsed host /
+ * port / password explicitly keeps the parse in one place and lets a missing
+ * URL fall back to localhost without BullMQ throwing at module-construction
+ * time — the schedule is disabled separately via
+ * `AUDIT_INTEGRITY_SCHEDULE_ENABLED`, and a hermetic unit test that never arms
+ * the schedule must still be able to boot the module.
+ */
+function redisConnection(): {
+  host: string;
+  port: number;
+  password?: string;
+  maxRetriesPerRequest: number | null;
+} {
+  const raw = process.env.REDIS_URL;
+  try {
+    const url = new URL(raw ?? 'redis://localhost:6379');
+    return {
+      host: url.hostname,
+      port: url.port === '' ? 6379 : Number.parseInt(url.port, 10),
+      ...(url.password !== '' ? { password: url.password } : {}),
+      // BullMQ workers REQUIRE maxRetriesPerRequest: null (its blocking
+      // commands must not give up); this is the value its own docs mandate.
+      maxRetriesPerRequest: null,
+    };
+  } catch {
+    return { host: 'localhost', port: 6379, maxRetriesPerRequest: null };
+  }
+}
 
 /**
  * **Audit Service** — `TechArch/01-components.md` §4.1 · FRD F02.
@@ -44,9 +84,28 @@ import { AuditExplorerService } from './explorer.service';
  * composition root.
  */
 @Module({
-  imports: [PrismaModule],
-  providers: [AuditService, AuditExplorerService],
-  exports: [AuditService],
-  controllers: [AuditInternalController, AuditExplorerController],
+  imports: [
+    PrismaModule,
+    // BullMQ for the hash-chain verification job (TechArch §8.2). The
+    // connection is read from REDIS_URL at registration; the SCHEDULE is armed
+    // separately in IntegrityProcessor and gated on
+    // AUDIT_INTEGRITY_SCHEDULE_ENABLED, so registering the queue here does not
+    // by itself start any periodic work.
+    BullModule.forRoot({ connection: redisConnection() }),
+    BullModule.registerQueue({ name: AUDIT_INTEGRITY_QUEUE }),
+  ],
+  providers: [
+    AuditService,
+    AuditExplorerService,
+    ChainVerifierService,
+    IntegrityStatusService,
+    IntegrityProcessor,
+  ],
+  exports: [AuditService, ChainVerifierService, IntegrityStatusService],
+  controllers: [
+    AuditInternalController,
+    AuditExplorerController,
+    IntegrityController,
+  ],
 })
 export class AuditModule {}
